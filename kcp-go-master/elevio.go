@@ -188,7 +188,7 @@ func ReadFromSlave(receiver chan<- string, MasterOrders chan [][]int) {
 		fmt.Printf("Slave %d connected!\n", id)
 
 		receive := make(chan string, 10)
-		MasterOrders := make(chan [][]int, 10)
+		MasterOrders := make(chan [][]int, 1)
 		go HandleConnections(conn, receive, id, MasterOrders)
 		go func(slaveID int32) {
 			for data := range receive {

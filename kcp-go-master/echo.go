@@ -43,7 +43,7 @@ func main() {
 	go PollStopButton(drv_stop)
 
 	if Master {
-		MasterOrders := make(chan [][]int, 10)
+		MasterOrders := make(chan [][]int, 1)
 		Read := make(chan string)
 		go ReadFromSlave(Read, MasterOrders)
 		for {
