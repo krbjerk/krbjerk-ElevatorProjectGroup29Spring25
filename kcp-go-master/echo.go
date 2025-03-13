@@ -7,7 +7,7 @@ import (
 
 func main() {
 
-	Master = true
+	var Master bool = false
 
 	EL1 := elevator{
 		id:       0,
@@ -43,22 +43,34 @@ func main() {
 	go PollStopButton(drv_stop)
 
 	if Master {
-		MasterOrders := make(chan [][]int, 1)
 		Read := make(chan string)
-		go ReadFromSlave(Read, MasterOrders)
+		go ReadFromSlave(Read)
+
 		for {
 			select {
 			case a := <-Read:
+				// Assuming the slave ID is encoded in a specific position in the message
+				slaveID := int(a[16] - '0') // Adjust this as needed
 				ELS[0] = EL1
-				ELS[int(a[16])-'0'] = MakeElevator(a)
-				MasterOrders <- MakeRequest(ELS)
-				MasterOrder := <-MasterOrders
-				fmt.Println("Updated MasterOrders:", MasterOrder)
+				ELS[slaveID] = MakeElevator(a)
+				order := MakeRequest(ELS)
+				fmt.Println("Updated MasterOrders:", order)
+
+				// Send the order to the specific slave's dedicated channel
+				slaveMapMutex.Lock()
+				ch, ok := slaveOrderChans[int32(slaveID)]
+				slaveMapMutex.Unlock()
+				if ok {
+					select {
+					case ch <- order:
+					default:
+						fmt.Printf("Slave %d's order channel is full; skipping update.\n", slaveID)
+					}
+				}
 			case a := <-drv_buttons:
 				fmt.Printf("%+v\n", a)
 				EL1.request[a.Floor][a.Button] = 1
 				SetButtonLamp(a.Button, a.Floor, true)
-				TakeRequest(EL1)
 
 			case a := <-drv_floors:
 				fmt.Printf("%+v\n", a)
@@ -69,7 +81,6 @@ func main() {
 					SetButtonLamp(2, a, false)
 					time.Sleep(time.Duration(FloorTimer) * time.Second)
 				}
-				TakeRequest(EL1)
 
 			case a := <-drv_obstr:
 				fmt.Printf("%+v\n", a)
@@ -95,11 +106,11 @@ func main() {
 			select {
 			case a := <-Send:
 				fmt.Printf("%+v\n", a)
+				TakeRequest(EL1, a)
 			case a := <-drv_buttons:
 				fmt.Printf("%+v\n", a)
 				EL1.request[a.Floor][a.Button] = 1
 				SetButtonLamp(a.Button, a.Floor, true)
-				TakeRequest(EL1)
 			case a := <-drv_floors:
 				fmt.Printf("%+v\n", a)
 				EL1.floor = a
@@ -109,7 +120,6 @@ func main() {
 					SetButtonLamp(2, a, false)
 					time.Sleep(time.Duration(FloorTimer) * time.Second)
 				}
-				TakeRequest(EL1)
 
 			case a := <-drv_obstr:
 				fmt.Printf("%+v\n", a)
