@@ -27,7 +27,7 @@ func main() {
 		EL1.request[i] = make([]int, 3)
 	}
 
-	Init("localhost:12345", numFloors)
+	Init("localhost:15657", numFloors)
 
 	var d MotorDirection = MD_Stop
 	SetMotorDirection(d)
