@@ -1,8 +1,8 @@
 package main
 
 import (
-	"Driver-go/elevio"
 	"fmt"
+	"root/elevio"
 	"time"
 )
 
@@ -47,7 +47,6 @@ func main() {
 
 		case <-timeoutTicker.C:
 			if g_timer.timedOut() {
-				fmt.Println("Timed out in main.")
 				g_elevator.handleDoorTimeout()
 			}
 		}

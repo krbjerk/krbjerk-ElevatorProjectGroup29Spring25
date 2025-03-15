@@ -1,8 +1,8 @@
 package main
 
 import (
-	"Driver-go/elevio"
 	"fmt"
+	"root/elevio"
 )
 
 const DOOR_OPEN_DURATION = 3.0
@@ -14,14 +14,16 @@ const (
 )
 
 type Elevator struct {
-	m_floor    int
-	m_dirn     elevio.MotorDirection
-	m_requests [NUM_FLOORS][3]bool
-	config     struct {
-		clearRequestVariant int
-	}
+	m_id          int
+	m_floor       int
+	m_dirn        elevio.MotorDirection
+	m_requests    [NUM_FLOORS][3]bool
 	m_behavior    ElevatorBehavior
 	m_obstruction bool
+	config        struct {
+		clearRequestVariant int
+	}
+	m_peers []string
 }
 
 type ElevatorBehavior int
