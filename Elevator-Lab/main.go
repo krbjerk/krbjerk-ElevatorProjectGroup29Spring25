@@ -8,6 +8,13 @@ import (
 
 func main() {
 
+	var Master bool = false
+
+	var ELS []Elevator = make([]Elevator, 3)
+	for i := range ELS {
+		ELS[i].m_requests = [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}}
+	}
+
 	elevio.Init("localhost:15657", NUM_FLOORS)
 
 	if elevio.GetFloor() == -1 {
@@ -28,26 +35,73 @@ func main() {
 	// Create a ticker that triggers every 500ms to check the timer
 	timeoutTicker := time.NewTicker(500 * time.Millisecond)
 
-	for {
-		select {
-		case a := <-drv_buttons:
-			fmt.Printf("%+v\n", a)
-			elevio.SetButtonLamp(a.Button, a.Floor, true)
+	if Master {
+		Read := make(chan string)
+		go ReadFromSlave(Read)
+		for {
+			select {
+			case a := <-Read:
+				// -------------------------------------------------------------------------------------------------------------
+				slaveID := int(a[16] - '0') // Adjust this as needed
+				ELS[0] = g_elevator
+				ELS[slaveID] = MakeElevator(a)
+				order := MakeRequest(OptimalRequestHandling /*ELS*/) // WHAT WILL BE SENT TO SLAVE
 
-			g_elevator.handleButtonPress(a.Floor, a.Button)
+				slaveMapMutex.Lock()
+				ch, ok := slaveOrderChans[int32(slaveID)]
+				slaveMapMutex.Unlock()
+				if ok {
+					select {
+					case ch <- order: // ACTUALLY SEND TO SLAVE
+					default:
+						fmt.Printf("Slave %d's order channel is full; skipping update.\n", slaveID)
+					}
+				}
+				// -------------------------------------------------------------------------------------------------------------
+			case a := <-drv_buttons:
+				g_elevator.handleButtonPress(a.Floor, a.Button,/* Connection */)
+				if /*there is connection*/ {
+				g_elevator.verifyRequest(OptimalRequestHandling /*ELS*/)
+				}
 
-		case a := <-drv_floors:
-			fmt.Printf("%+v\n", a)
-			g_elevator.handleFloorArrival(a)
+			case a := <-drv_floors:
+				g_elevator.handleFloorArrival(a)
 
-		case a := <-drv_obstr:
-			g_elevator.setObstruction(a)
+			case a := <-drv_obstr:
+				g_elevator.setObstruction(a)
 
-		case <-drv_stop:
+			case <-drv_stop:
 
-		case <-timeoutTicker.C:
-			if g_timer.timedOut() {
-				g_elevator.handleDoorTimeout()
+			case <-timeoutTicker.C:
+				if g_timer.timedOut() {
+					g_elevator.handleDoorTimeout()
+				}
+			}
+		}
+	} else {
+		Send := make(chan string)
+		go SendToMaster(Send, g_elevator) // CONSTANTLY SENDING ITS OWN ELEVATOR | Here I have a suspicion that we can have problems reading and writing at the same time
+		for {
+			select {
+			case a := <-Send:
+				// Function that will verify request and give them to the elevator, and from there also start elevator if necessary.
+				g_elevator.verifyRequest(a) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
+
+			case a := <-drv_buttons:
+				g_elevator.handleButtonPress(a.Floor, a.Button) // Also need paramter for connection. Necessary to differ between button-light contract and standalone
+
+			case a := <-drv_floors:
+				g_elevator.handleFloorArrival(a)
+
+			case a := <-drv_obstr:
+				g_elevator.setObstruction(a)
+
+			case <-drv_stop:
+
+			case <-timeoutTicker.C:
+				if g_timer.timedOut() {
+					g_elevator.handleDoorTimeout()
+				}
 			}
 		}
 	}

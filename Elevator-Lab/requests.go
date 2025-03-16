@@ -9,6 +9,8 @@ type Twin struct {
 	m_behavior ElevatorBehavior
 }
 
+var storedRequests [NUM_FLOORS][3]bool
+
 // Check if there are requests above the current floor
 func (e Elevator) RequestsAbove() bool {
 	for _floor := e.m_floor + 1; _floor < 4; _floor++ {
@@ -137,4 +139,35 @@ func (_e *Elevator) clearRequestsAtCurrentFloor() {
 			_e.m_requests[_e.m_floor][elevio.BT_HallDown] = false
 		}
 	}
+}
+
+func (_e *Elevator) verifyRequest(_requestsFromMaster Elevator) {
+	// Declare startFloor and startButton outside the loop so they persist
+	startFloor := -1
+	startButton := -1
+
+	// Check equality between stored requests and master requests
+	for i := 0; i < NUM_FLOORS; i++ {
+		for j := 0; j < 3; j++ {
+			if _e.m_requests[i][j] == true && _requestsFromMaster.m_requests[i][j] == true {
+				_e.m_requests[i][j] = true
+				storedRequests[i][j] = false // Assuming storedRequests belongs to _e
+
+				// Assign only the first matching request
+				if startFloor == -1 && startButton == -1 {
+					startFloor = i
+					startButton = j
+				}
+			}
+		}
+	}
+
+	// Only call if a valid request was found
+	if startFloor != -1 && startButton != -1 {
+		_e.toElevator(startFloor, elevio.ButtonType(startButton))
+	}
+}
+
+func setStoredRequests(_btnFloor int, _btnType elevio.ButtonType) {
+	storedRequests[_btnFloor][_btnType] = true
 }

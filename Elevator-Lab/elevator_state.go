@@ -64,10 +64,19 @@ func (_e *Elevator) initElevator() {
 	_e.config.clearRequestVariant = CV_InDirn
 }
 
-// Handle a button press
-func (_e *Elevator) handleButtonPress(_btnFloor int, _btnType elevio.ButtonType) {
+// Handle a button press	TODO: PROBLEMSS
+func (_e *Elevator) handleButtonPress(_btnFloor int, _btnType elevio.ButtonType, _connection bool) {
 	fmt.Println("Button press")
+	if _connection {
+		// Store requests
+		setStoredRequests(_btnFloor, _btnType)
 
+	} else {
+		_e.toElevator(_btnFloor, _btnType)
+	}
+}
+
+func (_e *Elevator) toElevator(_btnFloor int, _btnType elevio.ButtonType) {
 	switch _e.m_behavior {
 	case EB_DoorOpen:
 		fmt.Println("Door is open.")
