@@ -1,12 +1,14 @@
-package main
+package state
 
 import (
-	"Driver-go/elevio"
+	"Elevator/elevio"
 	"fmt"
 )
 
 const DOOR_OPEN_DURATION = 3.0
 const NUM_FLOORS = 4
+
+var Master bool
 
 const (
 	CV_All    = 0 // Clear all requests at the current floor
@@ -22,6 +24,7 @@ type Elevator struct {
 	}
 	m_behavior    ElevatorBehavior
 	m_obstruction bool
+	peers         []string
 }
 
 type ElevatorBehavior int
