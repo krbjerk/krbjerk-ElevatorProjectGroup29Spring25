@@ -9,7 +9,7 @@ type Twin struct {
 	m_behavior ElevatorBehavior
 }
 
-var storedRequests [NUM_FLOORS][3]bool
+var storedElevator Elevator
 
 // Check if there are requests above the current floor
 func (e Elevator) RequestsAbove() bool {
@@ -149,9 +149,9 @@ func (_e *Elevator) verifyRequest(_requestsFromMaster Elevator) {
 	// Check equality between stored requests and master requests
 	for i := 0; i < NUM_FLOORS; i++ {
 		for j := 0; j < 3; j++ {
-			if storedRequests[i][j] && _requestsFromMaster.m_requests[i][j] {
+			if storedElevator.m_requests[i][j] && _requestsFromMaster.m_requests[i][j] {
 				_e.m_requests[i][j] = true
-				storedRequests[i][j] = false // Assuming storedRequests belongs to _e
+				storedElevator.m_requests[i][j] = false // Assuming storedElevator.m_requests belongs to _e
 
 				// Assign only the first matching request
 				if startFloor == -1 && startButton == -1 {
@@ -169,5 +169,5 @@ func (_e *Elevator) verifyRequest(_requestsFromMaster Elevator) {
 }
 
 func setStoredRequests(_btnFloor int, _btnType elevio.ButtonType) {
-	storedRequests[_btnFloor][_btnType] = true
+	storedElevator.m_requests[_btnFloor][_btnType] = true
 }
