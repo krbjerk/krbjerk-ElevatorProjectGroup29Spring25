@@ -45,7 +45,7 @@ func main() {
 				slaveID := int(a[16] - '0') // Adjust this as needed
 				ELS[0] = g_elevator
 				ELS[slaveID] = MakeElevator(a)
-				order := MakeRequest(OptimalRequestHandling /*ELS*/) // WHAT WILL BE SENT TO SLAVE
+				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
 
 				slaveMapMutex.Lock()
 				ch, ok := slaveOrderChans[int32(slaveID)]
@@ -61,7 +61,9 @@ func main() {
 			case a := <-drv_buttons:
 				g_elevator.handleButtonPress(a.Floor, a.Button,/* Connection */)
 				if /*there is connection*/ {
-				g_elevator.verifyRequest(OptimalRequestHandling /*ELS*/)
+					ELS[0] = g_elevator
+					order := MakeRequest(ELS)
+					g_elevator.verifyRequest(ELS[0])
 				}
 
 			case a := <-drv_floors:
@@ -88,7 +90,7 @@ func main() {
 				g_elevator.verifyRequest(a) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
 
 			case a := <-drv_buttons:
-				g_elevator.handleButtonPress(a.Floor, a.Button) // Also need paramter for connection. Necessary to differ between button-light contract and standalone
+				g_elevator.handleButtonPress(a.Floor, a.Button,) // Also need paramter for connection. Necessary to differ between button-light contract and standalone
 
 			case a := <-drv_floors:
 				g_elevator.handleFloorArrival(a)
