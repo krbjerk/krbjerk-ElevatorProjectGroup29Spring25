@@ -231,7 +231,7 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 }
 
 func SendToMaster(receiver chan<- string, EL Elevator) {
-	conn, err := kcp.DialWithOptions("192.168.86.26:4000", nil, 10, 3)
+	conn, err := kcp.DialWithOptions("10.22.168.192:4001", nil, 10, 3)
 	if err != nil {
 		log.Fatalf("Failed to connect to master: %v", err)
 	}

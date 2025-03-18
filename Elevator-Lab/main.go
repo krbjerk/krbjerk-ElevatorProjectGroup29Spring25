@@ -82,12 +82,15 @@ func main() {
 		}
 	} else {
 		Send := make(chan string)
-		go SendToMaster(Send, g_elevator) // CONSTANTLY SENDING ITS OWN ELEVATOR | Here I have a suspicion that we can have problems reading and writing at the same time
+		go SendToMaster(Send, storedElevator) // CONSTANTLY SENDING ITS OWN ELEVATOR | Here I have a suspicion that we can have problems reading and writing at the same time
 		for {
 			select {
 			case a := <-Send:
+				fmt.Println(a)
 				// Function that will verify request and give them to the elevator, and from there also start elevator if necessary.
-				g_elevator.verifyRequest(MakeElevator(a)) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
+				if len(a) > 1 {
+					g_elevator.verifyRequest(MakeElevator(a)) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
+				}
 
 			case a := <-drv_buttons:
 				g_elevator.handleButtonPress(a.Floor, a.Button, ActiveConnection) // Also need paramter for connection. Necessary to differ between button-light contract and standalone
