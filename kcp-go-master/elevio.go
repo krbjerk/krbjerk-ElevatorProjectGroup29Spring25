@@ -273,7 +273,7 @@ func SendToMaster(receiver chan<- string, EL elevator) {
 		var package1 uint8 = uint8(EL.request[0][2]&0b1 | EL.request[0][0]&0b1<<1 | int(EL.behavior)&0b11<<2 | int(EL.dirn+1)&0b11<<4 | int(EL.floor)&0b11<<6)
 		var package2 uint8 = uint8(EL.request[3][2]&0b1 | EL.request[3][0]&0b1<<1 | EL.request[2][2]&0b1<<2 | EL.request[2][1]&0b1<<3 | EL.request[2][0]&0b1<<4 | EL.request[1][2]&0b1<<5 | EL.request[1][1]&0b1<<6 | EL.request[1][0]&0b1<<7)
 
-		_, err := conn.Write([]byte{package1, package2})
+		_, err := conn.Write([]byte{package1, package2}) // ACTUALLY SEND TO MASTER
 		if err != nil {
 			log.Println("Failed to send data:", err)
 			return
@@ -289,7 +289,7 @@ func SendToMaster(receiver chan<- string, EL elevator) {
 			fmt.Println("Failed to read response:", err)
 			continue
 		}
-		receiver <- string(buffer[:n])
+		receiver <- string(buffer[:n]) // ACTUALLY READ FROM MASTER
 
 		time.Sleep(2 * time.Second)
 	}

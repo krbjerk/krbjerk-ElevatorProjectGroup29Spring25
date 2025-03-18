@@ -48,12 +48,12 @@ func main() {
 
 		for {
 			select {
-			case a := <-Read:
+			case a := <-Read: // ACTUALLY READ FROM A SLAVE
 				// Assuming the slave ID is encoded in a specific position in the message
 				slaveID := int(a[16] - '0') // Adjust this as needed
 				ELS[0] = EL1
 				ELS[slaveID] = MakeElevator(a)
-				order := MakeRequest(ELS)
+				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
 				fmt.Println("Updated MasterOrders:", order)
 
 				// Send the order to the specific slave's dedicated channel
@@ -62,7 +62,7 @@ func main() {
 				slaveMapMutex.Unlock()
 				if ok {
 					select {
-					case ch <- order:
+					case ch <- order: // ACTUALLY SEND TO SLAVE
 					default:
 						fmt.Printf("Slave %d's order channel is full; skipping update.\n", slaveID)
 					}
@@ -101,10 +101,10 @@ func main() {
 		}
 	} else {
 		Send := make(chan string)
-		go SendToMaster(Send, EL1)
+		go SendToMaster(Send, EL1) // CONSTANTLY SENDING ITS OWN ELEVATOR | Here I have a suspicion that we can have problems reading and writing at the same time
 		for {
 			select {
-			case a := <-Send:
+			case a := <-Send: // ACTUALLY RECEIVING FROM MASTER
 				fmt.Printf("%+v\n", a)
 				TakeRequest(EL1, a)
 			case a := <-drv_buttons:
