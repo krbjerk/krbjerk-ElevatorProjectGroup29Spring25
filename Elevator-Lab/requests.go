@@ -149,7 +149,7 @@ func (_e *Elevator) verifyRequest(_requestsFromMaster Elevator) {
 	// Check equality between stored requests and master requests
 	for i := 0; i < NUM_FLOORS; i++ {
 		for j := 0; j < 3; j++ {
-			if _e.m_requests[i][j] == true && _requestsFromMaster.m_requests[i][j] == true {
+			if storedRequests[i][j] && _requestsFromMaster.m_requests[i][j] {
 				_e.m_requests[i][j] = true
 				storedRequests[i][j] = false // Assuming storedRequests belongs to _e
 

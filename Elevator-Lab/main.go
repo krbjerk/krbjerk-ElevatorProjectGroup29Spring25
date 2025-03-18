@@ -59,12 +59,12 @@ func main() {
 				}
 				// -------------------------------------------------------------------------------------------------------------
 			case a := <-drv_buttons:
-				g_elevator.handleButtonPress(a.Floor, a.Button,/* Connection */)
-				if /*there is connection*/ {
+				g_elevator.handleButtonPress(a.Floor, a.Button, true)
+				/*if there is connection {
 					ELS[0] = g_elevator
 					order := MakeRequest(ELS)
 					g_elevator.verifyRequest(ELS[0])
-				}
+				}*/
 
 			case a := <-drv_floors:
 				g_elevator.handleFloorArrival(a)
@@ -87,10 +87,10 @@ func main() {
 			select {
 			case a := <-Send:
 				// Function that will verify request and give them to the elevator, and from there also start elevator if necessary.
-				g_elevator.verifyRequest(a) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
+				g_elevator.verifyRequest(MakeElevator(a)) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
 
 			case a := <-drv_buttons:
-				g_elevator.handleButtonPress(a.Floor, a.Button,) // Also need paramter for connection. Necessary to differ between button-light contract and standalone
+				g_elevator.handleButtonPress(a.Floor, a.Button, ActiveConnection) // Also need paramter for connection. Necessary to differ between button-light contract and standalone
 
 			case a := <-drv_floors:
 				g_elevator.handleFloorArrival(a)

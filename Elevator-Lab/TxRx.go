@@ -24,6 +24,7 @@ var _numFloors int = 4
 var _mtx sync.Mutex
 var _conn net.Conn
 
+var ActiveConnection bool = false
 var FloorTimer = 2
 var numFloors = 4
 var Master bool
@@ -256,9 +257,11 @@ func SendToMaster(receiver chan<- string, EL Elevator) {
 
 		if err != nil {
 			fmt.Println("Failed to read response:", err)
+			ActiveConnection = false
 			continue
 		}
 		receiver <- string(buffer[:n])
+		ActiveConnection = true
 
 		time.Sleep(2 * time.Second)
 	}
