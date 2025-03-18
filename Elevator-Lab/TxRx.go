@@ -142,7 +142,7 @@ var (
 
 // ReadFromSlave accepts connections from slaves.
 func ReadFromSlave(receiver chan<- string) {
-	listener, err := kcp.ListenWithOptions(":4000", nil, 10, 3)
+	listener, err := kcp.ListenWithOptions(":4001", nil, 10, 3)
 	if err != nil {
 		log.Fatalf("Failed to start KCP server: %v", err)
 	}

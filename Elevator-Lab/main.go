@@ -8,7 +8,16 @@ import (
 
 func main() {
 
-	var Master bool = false
+	g_elevator := Elevator{
+		m_id:       0,
+		m_floor:    0,
+		m_dirn:     0,
+		m_behavior: 0,
+		m_requests: [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}},
+		m_peers:    []string{},
+	}
+
+	var Master bool = true
 
 	var ELS []Elevator = make([]Elevator, 3)
 	for i := range ELS {
@@ -45,8 +54,8 @@ func main() {
 				slaveID := int(a[16] - '0') // Adjust this as needed
 				ELS[0] = g_elevator
 				ELS[slaveID] = MakeElevator(a)
-				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
-
+				//order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
+				fmt.Println("0")
 				slaveMapMutex.Lock()
 				ch, ok := slaveOrderChans[int32(slaveID)]
 				slaveMapMutex.Unlock()
