@@ -78,7 +78,7 @@ func MakeRequest(ELS []Elevator) [][]int {
 			}
 		}
 	}
-	fmt.Printf("Requests: %+v", EL_requests)
+	//fmt.Printf("Requests: %+v", EL_requests)
 	var while_v = 0
 	for while_v < 1 {
 		var lowest = 100
@@ -118,10 +118,13 @@ func MakeRequest(ELS []Elevator) [][]int {
 			}
 		}
 	}
+	fmt.Printf("Requests sent: %+v", Finished_EL_requests)
 	return Finished_EL_requests
 }
+
 func MakeElevator(a string) (b Elevator) {
-	//[00000000000000000]"01"=floor"23"=dir"45"behavior"6-15"request"16"id
+	fmt.Println(a)
+	//[00010 0000 0000 0000]"01"=floor"23"=dir"45"behavior"6-15"request"16"id
 	EL := Elevator{
 		m_id:       int(a[16]) - '0',
 		m_floor:    (int(a[0])-'0')*2 + (int(a[1]) - '0'),
@@ -133,6 +136,26 @@ func MakeElevator(a string) (b Elevator) {
 	}
 	return EL
 }
+
+// TROUBLESHOOTING:
+/*func MakeElevator(a string) (b Elevator) {
+	fmt.Println(a)
+	// Adjusted bit indices for correct extraction
+	EL := Elevator{
+		m_id:       int(a[16]) - '0',
+		m_floor:    (int(a[3])-'0')*2 + (int(a[4]) - '0'), // Corrected indices
+		m_dirn:     elevio.MotorDirection((int(a[2])-'0')*2 + (int(a[3]) - '0') - 1),
+		m_behavior: ElevatorBehavior((int(a[5])-'0')*2 + (int(a[6]) - '0')),
+		m_requests: [4][3]bool{
+			{a[6] == '1', false, a[7] == '1'},
+			{a[8] == '1', a[9] == '1', a[10] == '1'},
+			{a[11] == '1', a[12] == '1', a[13] == '1'},
+			{false, a[14] == '1', a[15] == '1'},
+		},
+		m_peers: []string{},
+	}
+	return EL
+}*/
 
 var (
 	slaveMap      = make(map[string]int32)
@@ -212,7 +235,11 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 		}
 		receive <- data
 
+<<<<<<< HEAD
 		response := ""
+=======
+		response := "n"
+>>>>>>> 7efdac12210aa9e53574bfe648bc3d0be2812a92
 		select {
 		case masterOrder := <-orderChan:
 			if len(masterOrder) > int(id) && len(masterOrder[id]) > 0 {
