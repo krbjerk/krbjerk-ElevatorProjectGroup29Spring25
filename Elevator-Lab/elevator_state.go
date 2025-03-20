@@ -70,7 +70,11 @@ func (_e *Elevator) handleButtonPress(_btnFloor int, _btnType elevio.ButtonType,
 	_e.printElevatorState()
 	if _connection {
 		// Store requests
-		setStoredRequests(_btnFloor, _btnType)
+		if _btnType != elevio.BT_Cab {
+			setStoredRequests(_btnFloor, _btnType)
+		} else {
+			_e.toElevator(_btnFloor, _btnType)
+		}
 
 	} else {
 		_e.toElevator(_btnFloor, _btnType)

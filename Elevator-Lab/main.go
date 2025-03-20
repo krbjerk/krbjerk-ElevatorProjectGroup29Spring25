@@ -83,8 +83,13 @@ func main() {
 				test.printElevatorState()*/
 
 				ELS[0] = g_elevator
+				ELS[0].m_requests = storedElevator.m_requests
 				order := MakeRequest(ELS)
-				g_elevator.verifyRequest(ConvertToElevatorRequests(order[0][0]))
+				if len(order) > 0 && len(order[0]) > 0 {
+					g_elevator.verifyRequest(ConvertToElevatorRequests(order[0][0]))
+				} else {
+					fmt.Println("Order list is empty or improperly formatted.")
+				}
 
 			case a := <-drv_floors:
 				g_elevator.handleFloorArrival(a)
