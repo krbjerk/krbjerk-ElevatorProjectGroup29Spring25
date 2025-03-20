@@ -235,11 +235,7 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 		}
 		receive <- data
 
-<<<<<<< HEAD
-		response := ""
-=======
 		response := "n"
->>>>>>> 7efdac12210aa9e53574bfe648bc3d0be2812a92
 		select {
 		case masterOrder := <-orderChan:
 			if len(masterOrder) > int(id) && len(masterOrder[id]) > 0 {

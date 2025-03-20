@@ -18,7 +18,7 @@ func main() {
 		m_peers:    []string{},
 	}
 
-	var Master bool = false
+	var Master bool = true
 
 	var ELS []Elevator = make([]Elevator, 3)
 	for i := range ELS {
@@ -55,10 +55,7 @@ func main() {
 				slaveID := int(a[16] - '0') // Adjust this as needed
 				ELS[0] = g_elevator
 				ELS[slaveID] = MakeElevator(a)
-<<<<<<< HEAD
-=======
 				//ELS[slaveID].printElevatorState()
->>>>>>> 7efdac12210aa9e53574bfe648bc3d0be2812a92
 				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
 				fmt.Println("0")
 				slaveMapMutex.Lock()
@@ -87,7 +84,7 @@ func main() {
 
 				ELS[0] = g_elevator
 				order := MakeRequest(ELS)
-				g_elevator.verifyRequest((order[0])
+				g_elevator.verifyRequest(ConvertToElevatorRequests(order[0][0]))
 
 			case a := <-drv_floors:
 				g_elevator.handleFloorArrival(a)
