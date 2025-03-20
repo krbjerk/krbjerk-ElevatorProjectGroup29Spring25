@@ -54,7 +54,8 @@ func main() {
 				slaveID := int(a[16] - '0') // Adjust this as needed
 				ELS[0] = g_elevator
 				ELS[slaveID] = MakeElevator(a)
-				//order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
+				//ELS[slaveID].printElevatorState()
+				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
 				fmt.Println("0")
 				slaveMapMutex.Lock()
 				ch, ok := slaveOrderChans[int32(slaveID)]
@@ -69,11 +70,20 @@ func main() {
 				// -------------------------------------------------------------------------------------------------------------
 			case a := <-drv_buttons:
 				g_elevator.handleButtonPress(a.Floor, a.Button, true)
-				/*if there is connection {
-					ELS[0] = g_elevator
-					order := MakeRequest(ELS)
-					g_elevator.verifyRequest(ELS[0])
-				}*/
+				/*EL := g_elevator
+				var package1 uint8 = uint8(BoolToInt(EL.m_requests[0][2])&0b1 | BoolToInt(EL.m_requests[0][0])&0b1<<1 | int(EL.m_behavior)&0b11<<2 | int(EL.m_dirn+1)&0b11<<4 | int(EL.m_floor)&0b11<<6)
+				var package2 uint8 = uint8(BoolToInt(EL.m_requests[3][2])&0b1 | BoolToInt(EL.m_requests[3][0])&0b1<<1 | BoolToInt(EL.m_requests[2][2])&0b1<<2 | BoolToInt(EL.m_requests[2][1])&0b1<<3 | BoolToInt(EL.m_requests[2][0])&0b1<<4 | BoolToInt(EL.m_requests[1][2])&0b1<<5 | BoolToInt(EL.m_requests[1][1])&0b1<<6 | BoolToInt(EL.m_requests[1][0])&0b1<<7)
+				buffer := []byte{package1, package2}
+				var data string
+				for _, b := range buffer {
+					data += fmt.Sprintf("%08b", b)
+				}
+				test := MakeElevator(data + "0")
+				test.printElevatorState()*/
+
+				ELS[0] = g_elevator
+				order := MakeRequest(ELS)
+				g_elevator.verifyRequest((order[0])
 
 			case a := <-drv_floors:
 				g_elevator.handleFloorArrival(a)
