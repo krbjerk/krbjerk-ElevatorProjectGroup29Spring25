@@ -68,6 +68,14 @@ func main() {
 						fmt.Printf("Slave %d's order channel is full; skipping update.\n", slaveID)
 					}
 				}
+				if len(order) > 0 && len(order[0]) > 0 {
+					//g_elevator.verifyRequest(ConvertToElevatorRequests(order[0][0]))
+					//g_elevator.m_requests = MergeRequests(g_elevator.m_requests, ConvertToElevatorRequests(order[0][0]))
+					g_elevator.toElevator(GetFloor(order[0][0]), elevio.ButtonType(GetButtonType(order[0][0])))
+
+				} else {
+					fmt.Println("Order list is empty or improperly formatted.")
+				}
 				// -------------------------------------------------------------------------------------------------------------
 			case a := <-drv_buttons:
 				g_elevator.handleButtonPress(a.Floor, a.Button, true)

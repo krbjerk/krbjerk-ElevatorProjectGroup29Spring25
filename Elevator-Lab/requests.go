@@ -199,3 +199,26 @@ func ConvertToElevatorRequests(request int) [4][3]bool {
 
 	return m_requests
 }
+
+func MergeRequests(req1, req2 [4][3]bool) [4][3]bool {
+	var merged [4][3]bool
+
+	for floor := 0; floor < 4; floor++ {
+		for button := 0; button < 3; button++ {
+			// Convert bool to int, use bitwise OR, then convert back to bool
+			merged[floor][button] = req1[floor][button] || req2[floor][button]
+		}
+	}
+
+	return merged
+}
+
+// GetFloor extracts the floor number from an order
+func GetFloor(order int) int {
+	return order / 3
+}
+
+// GetButtonType extracts the button type (B_HallUp, B_HallDown, B_Cab) from an order
+func GetButtonType(order int) Button {
+	return Button(order % 3) // Convert remainder to Button type
+}
