@@ -212,7 +212,7 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 		}
 		receive <- data
 
-		response := "0"
+		response := ""
 		select {
 		case masterOrder := <-orderChan:
 			if len(masterOrder) > int(id) && len(masterOrder[id]) > 0 {
@@ -230,8 +230,8 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 	}
 }
 
-func SendToMaster(receiver chan<- string, EL Elevator) {
-	conn, err := kcp.DialWithOptions("10.22.168.192:4001", nil, 10, 3)
+func (EL *Elevator) SendToMaster(receiver chan<- string) {
+	conn, err := kcp.DialWithOptions("192.168.0.176:4001", nil, 10, 3)
 	if err != nil {
 		log.Fatalf("Failed to connect to master: %v", err)
 	}
@@ -240,15 +240,23 @@ func SendToMaster(receiver chan<- string, EL Elevator) {
 	fmt.Println("Connected to Master!")
 
 	for {
+		//EL.printElevatorState()
 		var package1 uint8 = uint8(BoolToInt(EL.m_requests[0][2])&0b1 | BoolToInt(EL.m_requests[0][0])&0b1<<1 | int(EL.m_behavior)&0b11<<2 | int(EL.m_dirn+1)&0b11<<4 | int(EL.m_floor)&0b11<<6)
 		var package2 uint8 = uint8(BoolToInt(EL.m_requests[3][2])&0b1 | BoolToInt(EL.m_requests[3][0])&0b1<<1 | BoolToInt(EL.m_requests[2][2])&0b1<<2 | BoolToInt(EL.m_requests[2][1])&0b1<<3 | BoolToInt(EL.m_requests[2][0])&0b1<<4 | BoolToInt(EL.m_requests[1][2])&0b1<<5 | BoolToInt(EL.m_requests[1][1])&0b1<<6 | BoolToInt(EL.m_requests[1][0])&0b1<<7)
-
+		fmt.Println()
 		_, err := conn.Write([]byte{package1, package2})
 		if err != nil {
 			log.Println("Failed to send data:", err)
 			return
 		}
 		fmt.Println("Sent to Master:", []byte{package1, package2})
+		//TROUBLESHOOTING:
+		testbuf := []byte{package1, package2}
+		testbitstring := ""
+		for _, testb := range testbuf {
+			testbitstring += fmt.Sprintf("%08b", testb)
+		}
+		fmt.Println(testbitstring)
 
 		// Read response from Master
 		buffer := make([]byte, 1024)

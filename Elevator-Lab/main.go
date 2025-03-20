@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"root/elevio"
+	"strconv"
 	"time"
 )
 
@@ -17,7 +18,7 @@ func main() {
 		m_peers:    []string{},
 	}
 
-	var Master bool = true
+	var Master bool = false
 
 	var ELS []Elevator = make([]Elevator, 3)
 	for i := range ELS {
@@ -54,7 +55,7 @@ func main() {
 				slaveID := int(a[16] - '0') // Adjust this as needed
 				ELS[0] = g_elevator
 				ELS[slaveID] = MakeElevator(a)
-				//order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
+				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
 				fmt.Println("0")
 				slaveMapMutex.Lock()
 				ch, ok := slaveOrderChans[int32(slaveID)]
@@ -91,14 +92,17 @@ func main() {
 		}
 	} else {
 		Send := make(chan string)
-		go SendToMaster(Send, storedElevator) // CONSTANTLY SENDING ITS OWN ELEVATOR | Here I have a suspicion that we can have problems reading and writing at the same time
+		go storedElevator.SendToMaster(Send /*storedElevator*/) // CONSTANTLY SENDING ITS OWN ELEVATOR | Here I have a suspicion that we can have problems reading and writing at the same time
+		// TODO: MUST FIX SYNCHRONIZATION
 		for {
 			select {
 			case a := <-Send:
 				fmt.Println(a)
 				// Function that will verify request and give them to the elevator, and from there also start elevator if necessary.
-				if len(a) > 1 {
-					g_elevator.verifyRequest(MakeElevator(a)) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
+				if len(a) > 0 {
+					b, _ := strconv.Atoi(a)
+
+					g_elevator.verifyRequest(ConvertToElevatorRequests(b)) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
 				}
 
 			case a := <-drv_buttons:

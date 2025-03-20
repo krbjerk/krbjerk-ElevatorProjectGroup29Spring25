@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"root/elevio"
 )
 
@@ -141,7 +142,7 @@ func (_e *Elevator) clearRequestsAtCurrentFloor() {
 	}
 }
 
-func (_e *Elevator) verifyRequest(_requestsFromMaster Elevator) {
+func (_e *Elevator) verifyRequest(_requestsFromMaster [4][3]bool) {
 	// Declare startFloor and startButton outside the loop so they persist
 	startFloor := -1
 	startButton := -1
@@ -149,7 +150,7 @@ func (_e *Elevator) verifyRequest(_requestsFromMaster Elevator) {
 	// Check equality between stored requests and master requests
 	for i := 0; i < NUM_FLOORS; i++ {
 		for j := 0; j < 3; j++ {
-			if storedElevator.m_requests[i][j] && _requestsFromMaster.m_requests[i][j] {
+			if storedElevator.m_requests[i][j] && _requestsFromMaster[i][j] {
 				_e.m_requests[i][j] = true
 				storedElevator.m_requests[i][j] = false // Assuming storedElevator.m_requests belongs to _e
 
@@ -170,4 +171,31 @@ func (_e *Elevator) verifyRequest(_requestsFromMaster Elevator) {
 
 func setStoredRequests(_btnFloor int, _btnType elevio.ButtonType) {
 	storedElevator.m_requests[_btnFloor][_btnType] = true
+}
+
+func MakeRequestFromMaster([][]int) {
+
+}
+
+func ConvertToElevatorRequests(request int) [4][3]bool {
+	var m_requests [4][3]bool // Initialize as all false
+
+	// Ensure request is valid (0 to 7)
+	if request < 0 || request > 7 {
+		fmt.Printf("Warning: Ignoring invalid request %d\n", request)
+	}
+
+	// Determine floor (0–3)
+	floor := request / 2
+
+	// Determine button type
+	button := 0 // Default to "UP"
+	if request%2 == 1 {
+		button = 1 // "DOWN"
+	}
+
+	// Assign request to correct floor and button
+	m_requests[floor][button] = true
+
+	return m_requests
 }
