@@ -170,7 +170,7 @@ func ReadFromSlave(receiver chan<- string) {
 		log.Fatalf("Failed to start KCP server: %v", err)
 	}
 	defer listener.Close()
-	fmt.Println("KCP Master (Server) listening on port 4000...")
+	fmt.Println("KCP Master (Server) listening on port 4001...")
 
 	for {
 		conn, err := listener.AcceptKCP()
@@ -246,6 +246,7 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 			if len(masterOrder) > int(id) && len(masterOrder[id]) > 0 {
 				fmt.Println("if")
 				response = strconv.Itoa(masterOrder[id][0])
+				fmt.Println("If-sentence")
 			}
 		case <-time.After(100 * time.Millisecond):
 			log.Printf("No master order available for Slave %d, sending default response.\n", id)

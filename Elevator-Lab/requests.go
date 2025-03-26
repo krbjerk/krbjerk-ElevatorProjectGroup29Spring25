@@ -150,10 +150,10 @@ func (_e *Elevator) verifyRequest(_requestsFromMaster [4][3]bool) {
 	// Check equality between stored requests and master requests
 	for i := 0; i < NUM_FLOORS; i++ {
 		for j := 0; j < 3; j++ {
-			if storedElevator.m_requests[i][j] && _requestsFromMaster[i][j] {
+			if _requestsFromMaster[i][j] {
 				_e.m_requests[i][j] = true
 				storedElevator.m_requests[i][j] = false // Assuming storedElevator.m_requests belongs to _e
-
+				fmt.Println("StoredElevator set to false")
 				// Assign only the first matching request
 				if startFloor == -1 && startButton == -1 {
 					startFloor = i
@@ -197,6 +197,7 @@ func ConvertToElevatorRequests(request int) [4][3]bool {
 	// Assign request to correct floor and button
 	m_requests[floor][button] = true
 
+	fmt.Println("con_req", m_requests)
 	return m_requests
 }
 

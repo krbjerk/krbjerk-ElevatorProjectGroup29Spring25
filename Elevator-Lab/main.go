@@ -18,7 +18,7 @@ func main() {
 		m_peers:    []string{},
 	}
 
-	var Master bool = true
+	var Master bool = false
 
 	var ELS []Elevator = make([]Elevator, 3)
 	var storedELS []Elevator = make([]Elevator, 3)
@@ -135,10 +135,12 @@ func main() {
 			select {
 			case a := <-Send:
 				fmt.Println(a)
+				fmt.Println("H")
+				storedElevator.printElevatorState()
 				// Function that will verify request and give them to the elevator, and from there also start elevator if necessary.
-				if len(a) > 0 {
+				if a != "n" {
 					b, _ := strconv.Atoi(a)
-
+					fmt.Println("strconv")
 					g_elevator.verifyRequest(ConvertToElevatorRequests(b)) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
 				}
 
@@ -158,6 +160,11 @@ func main() {
 					g_elevator.handleDoorTimeout()
 				}
 			}
+			temp_requests := storedElevator.m_requests
+			temp_elevator := g_elevator
+			temp_elevator.m_requests = temp_requests
+			storedElevator = temp_elevator
+
 		}
 	}
 }
