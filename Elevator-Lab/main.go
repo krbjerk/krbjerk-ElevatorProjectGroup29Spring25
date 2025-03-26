@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"root/elevio"
-	"strconv"
 	"time"
 )
 
@@ -91,11 +90,13 @@ func main() {
 						fmt.Printf("Slave %d's order channel is full; skipping update.\n", slaveID)
 					}
 				}
-				if len(order) > 0 && len(order[0]) > 0 {
+				if len(order) > 0 {
 					//g_elevator.verifyRequest(ConvertToElevatorRequests(order[0][0]))
 					//g_elevator.m_requests = MergeRequests(g_elevator.m_requests, ConvertToElevatorRequests(order[0][0]))
 					fmt.Println("Sending to local elevator.")
-					g_elevator.toElevator(GetFloor(order[0][0]), elevio.ButtonType(GetButtonType(order[0][0])))
+					g_elevator.m_requests = MergeRequests(g_elevator.m_requests, order[0])
+					TriggerFirstRequest(order[0], g_elevator.toElevator)
+					//g_elevator.toElevator(GetFloor(order[0][0]), elevio.ButtonType(GetButtonType(order[0][0])))
 
 				} else {
 					fmt.Println("Order list is empty or improperly formatted.")
@@ -108,7 +109,7 @@ func main() {
 				ELS[0].m_requests = storedElevator.m_requests
 				order := MakeRequest(ELS)
 				if len(order) > 0 && len(order[0]) > 0 {
-					g_elevator.verifyRequest(ConvertToElevatorRequests(order[0][0]))
+					g_elevator.verifyRequest(order[0])
 				} else {
 					fmt.Println("Order list is empty or improperly formatted.")
 				}
@@ -139,9 +140,9 @@ func main() {
 				storedElevator.printElevatorState()
 				// Function that will verify request and give them to the elevator, and from there also start elevator if necessary.
 				if a != "n" {
-					b, _ := strconv.Atoi(a)
+					b := DecodeStringToMatrix(a)
 					fmt.Println("strconv")
-					g_elevator.verifyRequest(ConvertToElevatorRequests(b)) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
+					g_elevator.verifyRequest(b) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
 				}
 
 			case a := <-drv_buttons:

@@ -159,7 +159,10 @@ func (_e *Elevator) verifyRequest(_requestsFromMaster [4][3]bool) {
 					startFloor = i
 					startButton = j
 				}
+			} else {
+				storedElevator.m_requests[i][j] = false
 			}
+			// Insert when you have new makeRequest and can send that TODO
 		}
 	}
 
@@ -222,4 +225,47 @@ func GetFloor(order int) int {
 // GetButtonType extracts the button type (B_HallUp, B_HallDown, B_Cab) from an order
 func GetButtonType(order int) Button {
 	return Button(order % 2) // Convert remainder to Button type
+}
+
+// ----- NEW ERA -----
+
+func EncodeMatrixToString(matrix [4][3]bool) string {
+	var result string
+	for i := 0; i < 4; i++ {
+		for j := 0; j < 3; j++ {
+			if matrix[i][j] {
+				result += "1"
+			} else {
+				result += "0"
+			}
+		}
+	}
+	return result
+}
+
+func DecodeStringToMatrix(s string) [4][3]bool {
+	var matrix [4][3]bool
+	if len(s) != 12 {
+		fmt.Println("Invalid string length, must be 12")
+		return matrix
+	}
+
+	for i := 0; i < 4; i++ {
+		for j := 0; j < 3; j++ {
+			index := i*3 + j
+			matrix[i][j] = s[index] == '1'
+		}
+	}
+	return matrix
+}
+
+func TriggerFirstRequest(matrix [4][3]bool, sendFunc func(floor int, btn elevio.ButtonType)) {
+	for floor := 0; floor < 4; floor++ {
+		for btn := 0; btn < 2; btn++ { // only hall up (0) and down (1)
+			if matrix[floor][btn] {
+				sendFunc(floor, elevio.ButtonType(btn))
+				return
+			}
+		}
+	}
 }

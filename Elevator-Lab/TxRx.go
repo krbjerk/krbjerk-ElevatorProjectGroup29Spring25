@@ -17,7 +17,7 @@ import (
 
 const _pollRate = 20 * time.Millisecond
 
-var slaveOrderChans = make(map[int32]chan [][]int)
+var slaveOrderChans = make(map[int32]chan [3][4][3]bool)
 
 var _initialized bool = false
 var _numFloors int = 4
@@ -61,29 +61,38 @@ func TakeRequest(EL Elevator, request string) {
 	}
 }
 
-func MakeRequest(ELS []Elevator) [][]int {
-	var EL_requests = make([][]int, 3)
+func MakeRequest(ELS []Elevator) [3][4][3]bool {
+	var EL_requests = [][]int{
+		make([]int, numFloors*2),
+		make([]int, numFloors*2),
+		make([]int, numFloors*2),
+	}
 	var Finished_EL_requests = make([][]int, 3)
-	EL_requests = [][]int{{0, 0, 0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0, 0}}
 	var Time_Between_floors = 5
+
 	for i := range ELS {
 		for j := range ELS {
 			for ii := 0; ii < numFloors; ii++ {
 				if ELS[j].m_requests[ii][0] {
-					EL_requests[i][ii*2] = int(math.Abs(float64(ELS[i].m_floor)-float64(ii)))*Time_Between_floors + 2*int(ELS[i].m_dirn)*-int(math.Pow(float64(int(ELS[i].m_floor)-int(ii)), 0)) + int(ELS[i].m_behavior)
+					EL_requests[i][ii*2] = int(math.Abs(float64(ELS[i].m_floor)-float64(ii)))*Time_Between_floors +
+						2*int(ELS[i].m_dirn)*-int(math.Pow(float64(int(ELS[i].m_floor)-int(ii)), 0)) +
+						int(ELS[i].m_behavior)
 				}
 				if ELS[j].m_requests[ii][1] {
-					EL_requests[i][ii*2+1] = int(math.Abs(float64(ELS[i].m_floor)-float64(ii)))*Time_Between_floors - 2*int(ELS[i].m_dirn)*-int(math.Pow(float64(int(ELS[i].m_floor)-int(ii)), 0)) + int(ELS[i].m_behavior)
+					EL_requests[i][ii*2+1] = int(math.Abs(float64(ELS[i].m_floor)-float64(ii)))*Time_Between_floors -
+						2*int(ELS[i].m_dirn)*-int(math.Pow(float64(int(ELS[i].m_floor)-int(ii)), 0)) +
+						int(ELS[i].m_behavior)
 				}
 			}
 		}
 	}
-	//fmt.Printf("Requests: %+v", EL_requests)
+
 	var while_v = 0
 	for while_v < 1 {
-		var lowest = 100
-		var index = 0
-		var floor = 0
+		lowest := 100
+		index := 0
+		floor := 0
+
 		for i := range EL_requests {
 			for j := range EL_requests[i] {
 				if EL_requests[i][j] < lowest && EL_requests[i][j] != 0 {
@@ -93,33 +102,44 @@ func MakeRequest(ELS []Elevator) [][]int {
 				}
 			}
 		}
+
 		if lowest == 100 {
 			while_v = 1
-		}
-		if lowest != 100 {
+		} else {
 			Finished_EL_requests[index] = append(Finished_EL_requests[index], floor)
 			EL_requests[0][floor] = 0
 			EL_requests[1][floor] = 0
 			EL_requests[2][floor] = 0
+
 			for i := range EL_requests[index] {
 				if EL_requests[index][i] != 0 {
-					EL_requests[index][i] = EL_requests[index][i] + 3
-					if floor%2 == 0 {
-						if i > floor {
-							EL_requests[index][i] = EL_requests[index][i] - 5
-						}
+					EL_requests[index][i] += 3
+					if floor%2 == 0 && i > floor {
+						EL_requests[index][i] -= 5
 					}
-					if floor%2 != 0 {
-						if i < floor {
-							EL_requests[index][i] = EL_requests[index][i] - 5
-						}
+					if floor%2 != 0 && i < floor {
+						EL_requests[index][i] -= 5
 					}
 				}
 			}
 		}
 	}
-	fmt.Printf("Requests made: %+v", Finished_EL_requests)
-	return Finished_EL_requests
+
+	// Final assignment into a [3][4][3]bool result matrix
+	var result [3][4][3]bool
+
+	for elIndex, requests := range Finished_EL_requests {
+		for _, flatFloor := range requests {
+			floor := flatFloor / 2
+			btnType := flatFloor % 2 // 0 = up, 1 = down
+			if btnType == 0 || btnType == 1 {
+				result[elIndex][floor][btnType] = true
+			}
+			// do NOT touch cab buttons (index 2)
+		}
+	}
+
+	return result
 }
 
 func MakeElevator(a string) (b Elevator) {
@@ -197,7 +217,7 @@ func ReadFromSlave(receiver chan<- string) {
 		fmt.Printf("Slave %d connected from %s!\n", id, host)
 
 		receive := make(chan string, 10)
-		orderChan := make(chan [][]int, 10)
+		orderChan := make(chan [3][4][3]bool, 10)
 
 		// Associate the order channel with the slave ID
 		slaveMapMutex.Lock()
@@ -215,7 +235,7 @@ func ReadFromSlave(receiver chan<- string) {
 
 // HandleConnections reads data from the connection, processes it,
 // waits for an order, and sends a response back.
-func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, orderChan <-chan [][]int, host string) {
+func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, orderChan <-chan [3][4][3]bool, host string) {
 	defer conn.Close()
 	buffer := make([]byte, 1024)
 	for {
@@ -236,6 +256,7 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 		receive <- data
 
 		response := "n"
+		response2 := []byte(response)
 
 		select {
 		case masterOrder := <-orderChan:
@@ -245,14 +266,14 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 			fmt.Println(masterOrder)
 			if len(masterOrder) > int(id) && len(masterOrder[id]) > 0 {
 				fmt.Println("if")
-				response = strconv.Itoa(masterOrder[id][0])
+				response2 = StringToByteList(EncodeMatrixToString(masterOrder[id]))
 				fmt.Println("If-sentence")
 			}
 		case <-time.After(100 * time.Millisecond):
 			log.Printf("No master order available for Slave %d, sending default response.\n", id)
 		}
 
-		_, err = conn.Write([]byte(response))
+		_, err = conn.Write(response2)
 		if err != nil {
 			log.Printf("Failed to send response to Slave %d: %v\n", id, err)
 			return
@@ -325,4 +346,16 @@ func BoolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func StringToByteList(s string) []byte {
+	var result []byte
+	for i := 0; i < len(s); i++ {
+		if s[i] == '1' {
+			result = append(result, 1)
+		} else {
+			result = append(result, 0)
+		}
+	}
+	return result
 }
