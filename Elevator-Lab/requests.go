@@ -215,10 +215,10 @@ func MergeRequests(req1, req2 [4][3]bool) [4][3]bool {
 
 // GetFloor extracts the floor number from an order
 func GetFloor(order int) int {
-	return order / 3
+	return order / 2
 }
 
 // GetButtonType extracts the button type (B_HallUp, B_HallDown, B_Cab) from an order
 func GetButtonType(order int) Button {
-	return Button(order % 3) // Convert remainder to Button type
+	return Button(order % 2) // Convert remainder to Button type
 }

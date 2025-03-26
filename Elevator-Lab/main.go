@@ -21,8 +21,10 @@ func main() {
 	var Master bool = true
 
 	var ELS []Elevator = make([]Elevator, 3)
+	var storedELS []Elevator = make([]Elevator, 3)
 	for i := range ELS {
 		ELS[i].m_requests = [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}}
+		storedELS[i].m_requests = [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}}
 	}
 
 	elevio.Init("localhost:15657", NUM_FLOORS)
@@ -54,8 +56,27 @@ func main() {
 				// -------------------------------------------------------------------------------------------------------------
 				slaveID := int(a[16] - '0') // Adjust this as needed
 				ELS[0] = g_elevator
+				ELS[0].m_requests = storedElevator.m_requests
 				ELS[slaveID] = MakeElevator(a)
 				//ELS[slaveID].printElevatorState()
+				// ------
+				// if new ELS != storedELS
+				// 		then remove the overlapping requests from new ELS
+				//		storedELS = new ELS
+				for k := 0; k < 3; k++ {
+					for i := 0; i < NUM_FLOORS; i++ {
+						for j := 0; j < 3; j++ {
+							if ELS[k].m_requests[i][j] && storedELS[k].m_requests[i][j] {
+								ELS[k].m_requests[i][j] = false
+								//storedELS[k].m_requests[i][j] = false // Assuming storedElevator.m_requests belongs to _e
+							} else {
+								storedELS[k].m_requests[i][j] = ELS[k].m_requests[i][j]
+							}
+						}
+					}
+
+				}
+				// ------
 				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
 				fmt.Println("0")
 				slaveMapMutex.Lock()
@@ -64,6 +85,8 @@ func main() {
 				if ok {
 					select {
 					case ch <- order: // ACTUALLY SEND TO SLAVE
+						fmt.Println("In select, ch<-order", order)
+						// We could change the elevators here so that it drops the request.
 					default:
 						fmt.Printf("Slave %d's order channel is full; skipping update.\n", slaveID)
 					}
@@ -71,6 +94,7 @@ func main() {
 				if len(order) > 0 && len(order[0]) > 0 {
 					//g_elevator.verifyRequest(ConvertToElevatorRequests(order[0][0]))
 					//g_elevator.m_requests = MergeRequests(g_elevator.m_requests, ConvertToElevatorRequests(order[0][0]))
+					fmt.Println("Sending to local elevator.")
 					g_elevator.toElevator(GetFloor(order[0][0]), elevio.ButtonType(GetButtonType(order[0][0])))
 
 				} else {
@@ -79,16 +103,6 @@ func main() {
 				// -------------------------------------------------------------------------------------------------------------
 			case a := <-drv_buttons:
 				g_elevator.handleButtonPress(a.Floor, a.Button, true)
-				/*EL := g_elevator
-				var package1 uint8 = uint8(BoolToInt(EL.m_requests[0][2])&0b1 | BoolToInt(EL.m_requests[0][0])&0b1<<1 | int(EL.m_behavior)&0b11<<2 | int(EL.m_dirn+1)&0b11<<4 | int(EL.m_floor)&0b11<<6)
-				var package2 uint8 = uint8(BoolToInt(EL.m_requests[3][2])&0b1 | BoolToInt(EL.m_requests[3][0])&0b1<<1 | BoolToInt(EL.m_requests[2][2])&0b1<<2 | BoolToInt(EL.m_requests[2][1])&0b1<<3 | BoolToInt(EL.m_requests[2][0])&0b1<<4 | BoolToInt(EL.m_requests[1][2])&0b1<<5 | BoolToInt(EL.m_requests[1][1])&0b1<<6 | BoolToInt(EL.m_requests[1][0])&0b1<<7)
-				buffer := []byte{package1, package2}
-				var data string
-				for _, b := range buffer {
-					data += fmt.Sprintf("%08b", b)
-				}
-				test := MakeElevator(data + "0")
-				test.printElevatorState()*/
 
 				ELS[0] = g_elevator
 				ELS[0].m_requests = storedElevator.m_requests

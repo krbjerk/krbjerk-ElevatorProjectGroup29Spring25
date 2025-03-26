@@ -118,7 +118,7 @@ func MakeRequest(ELS []Elevator) [][]int {
 			}
 		}
 	}
-	fmt.Printf("Requests sent: %+v", Finished_EL_requests)
+	fmt.Printf("Requests made: %+v", Finished_EL_requests)
 	return Finished_EL_requests
 }
 
@@ -236,9 +236,15 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 		receive <- data
 
 		response := "n"
+
 		select {
 		case masterOrder := <-orderChan:
+			fmt.Println("LEN MASTER")
+			fmt.Println(len(masterOrder))
+			fmt.Println(int(id))
+			fmt.Println(masterOrder)
 			if len(masterOrder) > int(id) && len(masterOrder[id]) > 0 {
+				fmt.Println("if")
 				response = strconv.Itoa(masterOrder[id][0])
 			}
 		case <-time.After(100 * time.Millisecond):
