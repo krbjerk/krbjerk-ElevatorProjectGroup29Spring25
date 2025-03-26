@@ -142,6 +142,74 @@ func MakeRequest(ELS []Elevator) [3][4][3]bool {
 	return result
 }
 
+func EncodeElevator(e *Elevator) [3]byte {
+	var b0, b1, b2 byte
+	req := e.m_requests
+
+	// Byte 0: floor 0–1 buttons
+	if req[0][0] {
+		b0 |= 1 << 0
+	}
+	if req[0][1] {
+		b0 |= 1 << 1
+	}
+	if req[0][2] {
+		b0 |= 1 << 2
+	}
+	if req[1][0] {
+		b0 |= 1 << 3
+	}
+	if req[1][1] {
+		b0 |= 1 << 4
+	}
+	if req[1][2] {
+		b0 |= 1 << 5
+	}
+
+	// Byte 1: floor 2–3 buttons
+	if req[2][0] {
+		b1 |= 1 << 0
+	}
+	if req[2][1] {
+		b1 |= 1 << 1
+	}
+	if req[2][2] {
+		b1 |= 1 << 2
+	}
+	if req[3][0] {
+		b1 |= 1 << 3
+	}
+	if req[3][1] {
+		b1 |= 1 << 4
+	}
+	if req[3][2] {
+		b1 |= 1 << 5
+	}
+
+	// Byte 2: state info
+	b2 |= byte(e.m_behavior & 0b11)
+	b2 |= byte((e.m_dirn+1)&0b11) << 2
+	b2 |= byte(e.m_floor&0b11) << 4
+
+	return [3]byte{b0, b1, b2}
+}
+
+func DecodeElevatorFromString(a string) Elevator {
+	return Elevator{
+		m_id:       int(a[16] - '0'),
+		m_floor:    (int(a[0]-'0') << 1) + int(a[1]-'0'),
+		m_dirn:     elevio.MotorDirection(((int(a[2]-'0') << 1) + int(a[3]-'0')) - 1),
+		m_behavior: ElevatorBehavior((int(a[4]-'0') << 1) + int(a[5]-'0')),
+		m_requests: [4][3]bool{
+			{a[6] == '1', false, a[7] == '1'},          // floor 0
+			{a[8] == '1', a[9] == '1', a[10] == '1'},   // floor 1
+			{a[11] == '1', a[12] == '1', a[13] == '1'}, // floor 2
+			{false, a[14] == '1', a[15] == '1'},        // floor 3
+		},
+		m_peers: []string{}, // You can modify this later if needed
+	}
+}
+
 func MakeElevator(a string) (b Elevator) {
 	fmt.Println(a)
 	//[00010 0000 0000 0000]"01"=floor"23"=dir"45"behavior"6-15"request"16"id
@@ -266,7 +334,7 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 			fmt.Println(masterOrder)
 			if len(masterOrder) > int(id) && len(masterOrder[id]) > 0 {
 				fmt.Println("if")
-				response2 = StringToByteList(EncodeMatrixToString(masterOrder[id]))
+				response2 = []byte(EncodeMatrixToString(masterOrder[id]))
 				fmt.Println("If-sentence")
 			}
 		case <-time.After(100 * time.Millisecond):
@@ -292,17 +360,18 @@ func (EL *Elevator) SendToMaster(receiver chan<- string) {
 
 	for {
 		//EL.printElevatorState()
-		var package1 uint8 = uint8(BoolToInt(EL.m_requests[0][2])&0b1 | BoolToInt(EL.m_requests[0][0])&0b1<<1 | int(EL.m_behavior)&0b11<<2 | int(EL.m_dirn+1)&0b11<<4 | int(EL.m_floor)&0b11<<6)
-		var package2 uint8 = uint8(BoolToInt(EL.m_requests[3][2])&0b1 | BoolToInt(EL.m_requests[3][0])&0b1<<1 | BoolToInt(EL.m_requests[2][2])&0b1<<2 | BoolToInt(EL.m_requests[2][1])&0b1<<3 | BoolToInt(EL.m_requests[2][0])&0b1<<4 | BoolToInt(EL.m_requests[1][2])&0b1<<5 | BoolToInt(EL.m_requests[1][1])&0b1<<6 | BoolToInt(EL.m_requests[1][0])&0b1<<7)
+		//var package1 uint8 = uint8(BoolToInt(EL.m_requests[0][2])&0b1 | BoolToInt(EL.m_requests[0][0])&0b1<<1 | int(EL.m_behavior)&0b11<<2 | int(EL.m_dirn+1)&0b11<<4 | int(EL.m_floor)&0b11<<6)
+		//var package2 uint8 = uint8(BoolToInt(EL.m_requests[3][2])&0b1 | BoolToInt(EL.m_requests[3][0])&0b1<<1 | BoolToInt(EL.m_requests[2][2])&0b1<<2 | BoolToInt(EL.m_requests[2][1])&0b1<<3 | BoolToInt(EL.m_requests[2][0])&0b1<<4 | BoolToInt(EL.m_requests[1][2])&0b1<<5 | BoolToInt(EL.m_requests[1][1])&0b1<<6 | BoolToInt(EL.m_requests[1][0])&0b1<<7)
+		packet := EncodeElevator(EL)
 		fmt.Println()
-		_, err := conn.Write([]byte{package1, package2})
+		_, err := conn.Write(packet[:])
 		if err != nil {
 			log.Println("Failed to send data:", err)
 			return
 		}
-		fmt.Println("Sent to Master:", []byte{package1, package2})
+		fmt.Println("Sent to Master:", packet)
 		//TROUBLESHOOTING:
-		testbuf := []byte{package1, package2}
+		testbuf := packet
 		testbitstring := ""
 		for _, testb := range testbuf {
 			testbitstring += fmt.Sprintf("%08b", testb)

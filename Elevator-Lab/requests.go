@@ -144,6 +144,7 @@ func (_e *Elevator) clearRequestsAtCurrentFloor() {
 
 func (_e *Elevator) verifyRequest(_requestsFromMaster [4][3]bool) {
 	// Declare startFloor and startButton outside the loop so they persist
+	fmt.Println("response from master", _requestsFromMaster)
 	startFloor := -1
 	startButton := -1
 

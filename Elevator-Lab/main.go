@@ -56,7 +56,7 @@ func main() {
 				slaveID := int(a[16] - '0') // Adjust this as needed
 				ELS[0] = g_elevator
 				ELS[0].m_requests = storedElevator.m_requests
-				ELS[slaveID] = MakeElevator(a)
+				ELS[slaveID] = DecodeElevatorFromString(a)
 				//ELS[slaveID].printElevatorState()
 				// ------
 				// if new ELS != storedELS
@@ -139,7 +139,7 @@ func main() {
 				fmt.Println("H")
 				storedElevator.printElevatorState()
 				// Function that will verify request and give them to the elevator, and from there also start elevator if necessary.
-				if a != "n" {
+				if string(a) != "n" {
 					b := DecodeStringToMatrix(a)
 					fmt.Println("strconv")
 					g_elevator.verifyRequest(b) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
