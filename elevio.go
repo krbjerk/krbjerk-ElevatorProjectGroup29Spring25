@@ -1,0 +1,528 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"math"
+	"math/rand"
+	"net"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/xtaci/kcp-go/v5"
+)
+
+const _pollRate = 20 * time.Millisecond
+
+var _initialized bool = false
+var _numFloors int = 4
+var _mtx sync.Mutex
+var _conn net.Conn
+var SimServerPort = "localhost:12345"
+
+type MotorDirection int
+
+const (
+	MD_Stop MotorDirection = 0
+	MD_Up   MotorDirection = 1
+	MD_Down MotorDirection = -1
+)
+
+type ButtonType int
+
+const (
+	BT_HallUp   ButtonType = 0
+	BT_HallDown ButtonType = 1
+	BT_Cab      ButtonType = 2
+)
+
+type ElevatorBehavior int
+
+var FloorTimer = 2
+var numFloors = 4
+var Master bool
+
+var ELS []elevator = make([]elevator, 3)
+
+var Read = make(chan string, 10)
+var Send = make(chan string, 10)
+
+type elevator struct {
+	id       int
+	floor    int
+	dirn     MotorDirection
+	behavior ElevatorBehavior
+	request  [][]int
+	peers    []string
+}
+
+const (
+	EB_idle ElevatorBehavior = iota
+	EB_Moving
+	EB_DoorOpen
+)
+
+type ButtonEvent struct {
+	Floor  int
+	Button ButtonType
+}
+
+func MasterCheck(masterTimer int, EL elevator) {
+	timeoutDuration := time.Duration(masterTimer) * time.Millisecond
+	deadline := time.Now().Add(timeoutDuration)
+
+	fmt.Println("Searching for a master...")
+
+	for {
+		// Try to connect to a potential master using KCP
+		conn, err := kcp.DialWithOptions("255.255.255.255:4001", nil, 10, 3) // Broadcast
+		if err == nil {
+			conn.SetDeadline(time.Now().Add(100 * time.Millisecond))
+			_, err = conn.Write([]byte("ping"))
+			if err == nil {
+				// Wait for "ack" response
+				buffer := make([]byte, 1024)
+				n, err := conn.Read(buffer)
+				if err == nil && string(buffer[:n]) == "ack" {
+					fmt.Println("Master found! Running SendToMaster.")
+					Master = false
+					go SendToMaster(Send, EL)
+					conn.Close()
+					return
+				}
+			}
+			conn.Close()
+		}
+
+		// Check if timeout has expired
+		if time.Now().After(deadline) {
+			fmt.Println("No master found. Becoming master.")
+			Master = true
+			go ackResponder()
+			go ReadFromSlave(Read)
+			return
+		}
+
+		// Retry after 1 second
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// ackResponder listens on port 4001 and responds to handshake messages.
+// It only sends "ack" if it receives a "ping".
+func ackResponder() {
+	listener, err := kcp.ListenWithOptions(":4001", nil, 10, 3) // Listen on all interfaces
+	if err != nil {
+		log.Fatalf("Failed to start KCP listener: %v", err)
+	}
+	defer listener.Close()
+	fmt.Println("Master is running and responding to KCP discovery requests.")
+
+	for {
+		conn, err := listener.AcceptKCP()
+		if err != nil {
+			log.Printf("Error accepting KCP connection: %v", err)
+			continue
+		}
+
+		// Handle each connection in a new goroutine
+		go func(c *kcp.UDPSession) {
+			defer c.Close()
+
+			// Read data
+			buffer := make([]byte, 1024)
+			n, err := c.Read(buffer)
+			if err != nil {
+				log.Printf("Error reading data: %v", err)
+				return
+			}
+
+			// If message is "ping", respond with "ack"
+			if string(buffer[:n]) == "ping" {
+				_, err = c.Write([]byte("ack"))
+				if err != nil {
+					log.Printf("Error sending ack: %v", err)
+				} else {
+					fmt.Println("Sent ack to a client")
+				}
+			}
+		}(conn)
+	}
+}
+
+func TakeRequest(EL elevator, request string) {
+	value, err := strconv.Atoi(request)
+	if err != nil {
+		// Handle the error appropriately
+		fmt.Println("Error converting string to int:", err)
+		return
+	}
+	if value%2 == 0 {
+		SetMotorDirection(MD_Up)
+		EL.dirn = MD_Up
+	}
+}
+
+// Take in
+func MakeRequest(ELS []elevator, numFloors int) [][]int {
+	var EL_requests = make([][]int, 3)
+	var Finished_EL_requests = make([][]int, 3)
+	EL_requests = [][]int{{0, 0, 0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0, 0}}
+	var Time_Between_floors = 5
+	for i := range ELS {
+		for j := range ELS {
+			for ii := 0; ii < numFloors; ii++ {
+				if ELS[j].request[ii][0] == 1 {
+					EL_requests[i][ii*2] = int(math.Abs(float64(ELS[i].floor)-float64(ii)))*Time_Between_floors + 2*int(ELS[i].dirn)*-int(math.Pow(float64(int(ELS[i].floor)-int(ii)), 0)) + int(ELS[i].behavior)
+				}
+				if ELS[j].request[ii][1] == 1 {
+					EL_requests[i][ii*2+1] = int(math.Abs(float64(ELS[i].floor)-float64(ii)))*Time_Between_floors - 2*int(ELS[i].dirn)*-int(math.Pow(float64(int(ELS[i].floor)-int(ii)), 0)) + int(ELS[i].behavior)
+				}
+			}
+		}
+	}
+	fmt.Printf("Requests: %+v", EL_requests)
+	var while_v = 0
+	for while_v < 1 {
+		var lowest = 100
+		var index = 0
+		var floor = 0
+		for i := range EL_requests {
+			for j := range EL_requests[i] {
+				if EL_requests[i][j] < lowest && EL_requests[i][j] != 0 {
+					lowest = EL_requests[i][j]
+					index = i
+					floor = j
+				}
+			}
+		}
+		if lowest == 100 {
+			while_v = 1
+		}
+		if lowest != 100 {
+			Finished_EL_requests[index] = append(Finished_EL_requests[index], floor)
+			EL_requests[0][floor] = 0
+			EL_requests[1][floor] = 0
+			EL_requests[2][floor] = 0
+			for i := range EL_requests[index] {
+				if EL_requests[index][i] != 0 {
+					EL_requests[index][i] = EL_requests[index][i] + 3
+					if floor%2 == 0 {
+						if i > floor {
+							EL_requests[index][i] = EL_requests[index][i] - 5
+						}
+					}
+					if floor%2 != 0 {
+						if i < floor {
+							EL_requests[index][i] = EL_requests[index][i] - 5
+						}
+					}
+				}
+			}
+		}
+	}
+	return Finished_EL_requests
+}
+func MakeElevator(a string) (b elevator) {
+	//[00000000000000000]"01"=floor"23"=dir"45"behavior"6-15"request"16"id
+	EL := elevator{
+		id:       int(a[16]) - '0',
+		floor:    (int(a[0])-'0')*2 + (int(a[1]) - '0'),
+		dirn:     MotorDirection((int(a[2])-'0')*2 + (int(a[3]) - '0') - 1),
+		behavior: ElevatorBehavior((int(a[5])-'0')*2 + (int(a[6]) - '0')),
+		request:  [][]int{{int(a[6]) - '0', 0, int(a[7]) - '0'}, {int(a[8]) - '0', int(a[9]) - '0', int(a[10]) - '0'}, {int(a[11]) - '0', int(a[12]) - '0', int(a[13]) - '0'}, {0, int(a[14]) - '0', int(a[15]) - '0'}},
+		peers:    []string{},
+	}
+	return EL
+}
+func UpdateRequest(a string) (b elevator) {
+	b.request[0][0] = int(a[9]) - '0'
+	b.request[0][2] = int(a[8]) - '0'
+	b.request[1][0] = int(a[7]) - '0'
+	b.request[1][1] = int(a[6]) - '0'
+	b.request[1][2] = int(a[5]) - '0'
+	b.request[2][0] = int(a[4]) - '0'
+	b.request[2][1] = int(a[3]) - '0'
+	b.request[2][2] = int(a[2]) - '0'
+	b.request[3][0] = int(a[1]) - '0'
+	b.request[3][2] = int(a[0]) - '0'
+	return b
+}
+
+var ipToID = make(map[string]int)
+var idCounter = 1
+var mutex sync.Mutex // Protects the map from race conditions
+
+// ReadFromSlave accepts connections from slaves.
+func ReadFromSlave(receiver chan<- string) {
+	listener, err := kcp.ListenWithOptions(":4000", nil, 10, 3)
+
+	if err != nil {
+		log.Fatalf("Failed to start KCP server: %v", err)
+	}
+	defer listener.Close()
+	fmt.Println("KCP Master (Server) listening on port 4000...")
+
+	for {
+		conn, err := listener.AcceptKCP()
+		if err != nil {
+			fmt.Printf("Error accepting connection: %v\n", err)
+			continue
+		}
+		remoteAddr := conn.RemoteAddr().(*net.UDPAddr).IP.String()
+
+		// Assign or retrieve the ID
+		mutex.Lock()
+		id, exists := ipToID[remoteAddr]
+		if !exists {
+			id = idCounter
+			ipToID[remoteAddr] = id
+			idCounter++
+		} else {
+			var update uint8 = uint8(ELS[id].request[3][2]&0b1 | ELS[id].request[2][2]&0b1<<1 | ELS[id].request[1][2]&0b1<<2 | ELS[id].request[0][2]&0b1<<3)
+			_, err = conn.Write([]byte{update})
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+		mutex.Unlock()
+
+		fmt.Printf("Slave connected from %s assigned ID: %d\n", remoteAddr, id)
+
+		receive := make(chan string, 10)
+
+		go HandleConnections(conn, receive)
+		go func() {
+			for data := range receive {
+				receiver <- data + strconv.Itoa(id)
+			}
+		}()
+	}
+}
+
+// HandleConnections reads data from the connection, processes it,
+// waits for an order, and sends a response back.
+func HandleConnections(conn *kcp.UDPSession, receive chan<- string) {
+	defer conn.Close()
+	buffer := make([]byte, 1024)
+	for {
+		n, err := conn.Read(buffer)
+		if err != nil {
+			if err == io.EOF {
+				log.Printf("Slave Disconnected")
+			} else {
+				log.Printf("Read error from Slave", err)
+			}
+			return
+		}
+
+		var data string
+		for _, b := range buffer[:n] {
+			data += fmt.Sprintf("%08b", b)
+		}
+		receive <- data
+		fmt.Println("Data Received", data)
+
+		response := "0"
+
+		_, err = conn.Write([]byte(response))
+		if err != nil {
+			log.Printf("Failed to send response to Slave", err)
+			return
+		}
+	}
+}
+
+func SendToMaster(receiver chan<- string, EL elevator) {
+	conn, err := kcp.DialWithOptions("255.255.255.255:4000", nil, 10, 3)
+	if err != nil {
+		log.Fatalf("Failed to connect to master: %v", err)
+	}
+	defer conn.Close()
+
+	fmt.Println("Connected to Master!")
+
+	for {
+		var package1 uint8 = uint8(EL.request[0][2]&0b1 | EL.request[0][0]&0b1<<1 | int(EL.behavior)&0b11<<2 | int(EL.dirn+1)&0b11<<4 | int(EL.floor)&0b11<<6)
+		var package2 uint8 = uint8(EL.request[3][2]&0b1 | EL.request[3][0]&0b1<<1 | EL.request[2][2]&0b1<<2 | EL.request[2][1]&0b1<<3 | EL.request[2][0]&0b1<<4 | EL.request[1][2]&0b1<<5 | EL.request[1][1]&0b1<<6 | EL.request[1][0]&0b1<<7)
+
+		_, err := conn.Write([]byte{package1, package2})
+		if err != nil {
+			log.Println("Failed to send data:", err)
+			return
+		}
+		fmt.Println("Sent to Master:", []byte{package1, package2})
+
+		// Read response from Master
+		buffer := make([]byte, 1024)
+		conn.SetReadDeadline(time.Now().Add(2 * time.Second)) // Prevent infinite blocking
+		n, err := conn.Read(buffer)
+
+		if err != nil {
+			fmt.Println("Failed to read response:", err)
+			MasterCheck(rand.Intn(1500)+300, EL)
+			return
+		}
+		
+		receiver <- string(buffer[:n])
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func Init(addr string, numFloors int) {
+	if _initialized {
+		fmt.Println("Driver already initialized!")
+		return
+	}
+	_numFloors = numFloors
+	_mtx = sync.Mutex{}
+	var err error
+	_conn, err = net.Dial("tcp", addr)
+	if err != nil {
+		panic(err.Error())
+	}
+	_initialized = true
+}
+
+func SetMotorDirection(dir MotorDirection) {
+	write([4]byte{1, byte(dir), 0, 0})
+}
+
+func SetButtonLamp(button ButtonType, floor int, value bool) {
+	write([4]byte{2, byte(button), byte(floor), toByte(value)})
+}
+
+func SetFloorIndicator(floor int) {
+	write([4]byte{3, byte(floor), 0, 0})
+}
+
+func SetDoorOpenLamp(value bool) {
+	write([4]byte{4, toByte(value), 0, 0})
+}
+
+func SetStopLamp(value bool) {
+	write([4]byte{5, toByte(value), 0, 0})
+}
+
+func PollButtons(receiver chan<- ButtonEvent) {
+	prev := make([][3]bool, _numFloors)
+	for {
+		time.Sleep(_pollRate)
+		for f := 0; f < _numFloors; f++ {
+			for b := ButtonType(0); b < 3; b++ {
+				v := GetButton(b, f)
+				if v != prev[f][b] && !v {
+					receiver <- ButtonEvent{f, ButtonType(b)}
+				}
+				prev[f][b] = v
+			}
+		}
+	}
+}
+
+func PollFloorSensor(receiver chan<- int) {
+	prev := -1
+	for {
+		time.Sleep(_pollRate)
+		v := GetFloor()
+		if v != prev && v != -1 {
+			receiver <- v
+		}
+		prev = v
+	}
+}
+
+func PollStopButton(receiver chan<- bool) {
+	prev := false
+	for {
+		time.Sleep(_pollRate)
+		v := GetStop()
+		if v != prev {
+			receiver <- v
+		}
+		prev = v
+	}
+}
+
+func PollObstructionSwitch(receiver chan<- bool) {
+	prev := false
+	for {
+		time.Sleep(_pollRate)
+		v := GetObstruction()
+		if v != prev {
+			receiver <- v
+		}
+		prev = v
+	}
+}
+
+func GetButton(button ButtonType, floor int) bool {
+	a := read([4]byte{6, byte(button), byte(floor), 0})
+	return toBool(a[1])
+}
+
+func GetFloor() int {
+	a := read([4]byte{7, 0, 0, 0})
+	if a[1] != 0 {
+		return int(a[2])
+	} else {
+		return -1
+	}
+}
+
+func GetStop() bool {
+	a := read([4]byte{8, 0, 0, 0})
+	return toBool(a[1])
+}
+
+func GetObstruction() bool {
+	a := read([4]byte{9, 0, 0, 0})
+	return toBool(a[1])
+}
+
+func read(in [4]byte) [4]byte {
+	_mtx.Lock()
+	defer _mtx.Unlock()
+
+	_, err := _conn.Write(in[:])
+	if err != nil {
+		panic("Lost connection to Elevator Server")
+	}
+
+	var out [4]byte
+	_, err = _conn.Read(out[:])
+	if err != nil {
+		panic("Lost connection to Elevator Server")
+	}
+
+	return out
+}
+
+func write(in [4]byte) {
+	_mtx.Lock()
+	defer _mtx.Unlock()
+
+	_, err := _conn.Write(in[:])
+	if err != nil {
+		panic("Lost connection to Elevator Server")
+	}
+}
+
+func toByte(a bool) byte {
+	var b byte = 0
+	if a {
+		b = 1
+	}
+	return b
+}
+
+func toBool(a byte) bool {
+	var b bool = false
+	if a != 0 {
+		b = true
+	}
+	return b
+}
