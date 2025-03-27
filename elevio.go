@@ -32,6 +32,8 @@ const (
 
 type ButtonType int
 
+const packetLossRate = 20
+
 const (
 	BT_HallUp   ButtonType = 0
 	BT_HallDown ButtonType = 1
@@ -252,8 +254,10 @@ func UpdateRequest(a string) (b elevator) {
 }
 
 var ipToID = make(map[string]int)
+var RequestToID = make(map[string]int)
 var idCounter = 1
 var mutex sync.Mutex // Protects the map from race conditions
+
 
 // ReadFromSlave accepts connections from slaves.
 func ReadFromSlave(receiver chan<- string) {
@@ -276,6 +280,7 @@ func ReadFromSlave(receiver chan<- string) {
 		// Assign or retrieve the ID
 		mutex.Lock()
 		id, exists := ipToID[remoteAddr]
+		
 		if !exists {
 			id = idCounter
 			ipToID[remoteAddr] = id
@@ -315,7 +320,6 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string) {
 			} else {
 				log.Printf("Read error from Slave", err)
 			}
-			return
 		}
 
 		var data string
@@ -325,13 +329,19 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string) {
 		receive <- data
 		fmt.Println("Data Received", data)
 
+
+
 		response := "0"
 
-		_, err = conn.Write([]byte(response))
-		if err != nil {
-			log.Printf("Failed to send response to Slave", err)
-			return
+		if rand.Intn(100) < packetLossRate {
+			fmt.Println("Simulated packet loss")
+		} else {
+			_, err = conn.Write([]byte(response))
+			if err != nil {
+				log.Printf("Failed to send response to Slave", err)
+			}
 		}
+
 	}
 }
 
@@ -348,27 +358,30 @@ func SendToMaster(receiver chan<- string, EL elevator) {
 		var package1 uint8 = uint8(EL.request[0][2]&0b1 | EL.request[0][0]&0b1<<1 | int(EL.behavior)&0b11<<2 | int(EL.dirn+1)&0b11<<4 | int(EL.floor)&0b11<<6)
 		var package2 uint8 = uint8(EL.request[3][2]&0b1 | EL.request[3][0]&0b1<<1 | EL.request[2][2]&0b1<<2 | EL.request[2][1]&0b1<<3 | EL.request[2][0]&0b1<<4 | EL.request[1][2]&0b1<<5 | EL.request[1][1]&0b1<<6 | EL.request[1][0]&0b1<<7)
 
-		_, err := conn.Write([]byte{package1, package2})
-		if err != nil {
-			log.Println("Failed to send data:", err)
-			return
+		if rand.Intn(100) < packetLossRate {
+			fmt.Println("Simulated packet loss")
+		} else {
+			_, err := conn.Write([]byte{package1, package2})
+			if err != nil {
+				log.Println("Failed to send data:", err)
+			}
 		}
+
 		fmt.Println("Sent to Master:", []byte{package1, package2})
 
 		// Read response from Master
 		buffer := make([]byte, 1024)
-		conn.SetReadDeadline(time.Now().Add(2 * time.Second)) // Prevent infinite blocking
+		conn.SetReadDeadline(time.Now().Add(1 * time.Millisecond)) // Prevent infinite blocking
 		n, err := conn.Read(buffer)
 
 		if err != nil {
 			fmt.Println("Failed to read response:", err)
-			MasterCheck(rand.Intn(1500)+300, EL)
-			return
+			//MasterCheck(rand.Intn(1500)+300, EL)
 		}
-		
+
 		receiver <- string(buffer[:n])
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(1 * time.Millisecond)
 	}
 }
 

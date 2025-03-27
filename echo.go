@@ -54,11 +54,12 @@ func main() {
 			select {
 			case a := <-Read:
 				//fmt.Println(a)
-				slaveID := int(a[16] - '0')
+				slaveID := int(a[16]) - '0'
 				ELS[0] = EL1
 				ELS[slaveID] = MakeElevator(a)
 				order := MakeRequest(ELS, numFloors)
 				fmt.Println("Updated MasterOrders:", order)
+
 			case a := <-drv_buttons:
 				fmt.Printf("%+v\n", a)
 				EL1.request[a.Floor][a.Button] = 1
@@ -96,7 +97,7 @@ func main() {
 			select {
 			case a := <-Send:
 				fmt.Println(a)
-				TakeRequest(EL1, a)
+				//TakeRequest(EL1, a)
 			case a := <-drv_buttons:
 				fmt.Printf("%+v\n", a)
 				EL1.request[a.Floor][a.Button] = 1
