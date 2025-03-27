@@ -10,7 +10,14 @@ type Twin struct {
 	m_behavior ElevatorBehavior
 }
 
-var storedElevator Elevator
+var storedElevator = Elevator{
+	m_id:       0,
+	m_floor:    0,
+	m_dirn:     0,
+	m_behavior: 0,
+	m_requests: [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}},
+	m_peers:    []string{},
+}
 
 // Check if there are requests above the current floor
 func (e Elevator) RequestsAbove() bool {

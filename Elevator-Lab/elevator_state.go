@@ -26,6 +26,8 @@ type Elevator struct {
 	m_peers []string
 }
 
+type ElevatorList []Elevator
+
 type ElevatorBehavior int
 
 const (

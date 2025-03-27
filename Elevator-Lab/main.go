@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"root/elevio"
 	"time"
 )
@@ -20,14 +21,15 @@ func main() {
 	g_elevator := init_elevator
 	var localOtherRequest [4][3]bool = [4][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}} // TODO: Musyt define it at start. can be all false
 
-	var Master bool = true
-
-	var ELS []Elevator = make([]Elevator, 1)
+	var ELS ElevatorList = make([]Elevator, 1)
 	var storedELS []Elevator = make([]Elevator, 1)
 	/*for i := range ELS {
 		ELS[i].m_requests = [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}}
 		storedELS[i].m_requests = [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}}
 	}*/
+
+	masterTimer := rand.Intn(1500) + 300
+	MasterCheck(masterTimer, &ELS, &storedElevator) // Pass by reference and synchronize storedElevator being sent
 
 	elevio.Init("localhost:15657", NUM_FLOORS)
 
@@ -49,18 +51,17 @@ func main() {
 	// Create a ticker that triggers every 500ms to check the timer
 	timeoutTicker := time.NewTicker(500 * time.Millisecond)
 
-	if Master {
-		Read := make(chan string)
-		go ReadFromSlave(Read)
-		for {
+	for {
+		if Master { // Master is in TxRx
 			select {
 			case a := <-Read:
 				// -------------------------------------------------------------------------------------------------------------
 				slaveID := int(a[24] - '0') // Adjust this as needed
 				ELS[0] = g_elevator
 				ELS[0].m_requests = storedElevator.m_requests
+				// REMEMBER TO FIX SYNCHRONIZATION OF ELS, DEEM IF NECESSARY.
 
-				if len(ELS) < slaveID+1 {
+				if len(ELS) < slaveID+1 { // Will this introduce problems with slave disconnect?
 					ELS = append(ELS, init_elevator)
 					storedELS = append(storedELS, init_elevator)
 					fmt.Println("New elevator")
@@ -152,22 +153,20 @@ func main() {
 					g_elevator.handleDoorTimeout(localOtherRequest)
 				}
 			}
-		}
-	} else {
-		Send := make(chan string)
-		go storedElevator.SendToMaster(Send /*storedElevator*/) // CONSTANTLY SENDING ITS OWN ELEVATOR | Here I have a suspicion that we can have problems reading and writing at the same time
-		// TODO: MUST FIX SYNCHRONIZATION
-		for {
+
+		} else {
 			select {
 			case a := <-Send:
 				fmt.Println(a)
 				fmt.Println("H")
 				storedElevator.printElevatorState()
 				// Function that will verify request and give them to the elevator, and from there also start elevator if necessary.
-				if string(a) != "n" {
-					b := DecodeStringToMatrix(a)
+				if len(a) == 24 {
+					b := DecodeStringToMatrix(a[:11]) // need to decode. can use a[:11]
 					fmt.Println("strconv")
 					g_elevator.verifyRequest(b, localOtherRequest) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
+				} else if len(a) == 8 {
+					g_elevator.m_requests = MergeRequests(g_elevator.m_requests, stringCabToRequest(a))
 				}
 
 			case a := <-drv_buttons:

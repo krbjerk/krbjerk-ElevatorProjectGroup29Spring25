@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"math/rand"
 	"net"
 	"root/elevio"
 	"strconv"
@@ -19,6 +20,10 @@ const _pollRate = 20 * time.Millisecond
 
 var slaveOrderChans = make(map[int32]chan [][4][3]bool)
 
+var Read = make(chan string, 10)
+var Send = make(chan string, 10)
+
+// Simulator
 var _initialized bool = false
 var _numFloors int = 4
 var _mtx sync.Mutex
@@ -29,36 +34,15 @@ var FloorTimer = 2
 var numFloors = 4
 var Master bool
 
+// For sending between elevators
+var ipToID = make(map[string]int)
+var RequestToID = make(map[string]int)
+var idCounter = 1
+var mutex sync.Mutex // Protects the map from race conditions
+
 type ButtonEvent struct {
 	Floor  int
 	Button Button
-}
-
-func MasterCheck(EL Elevator) {
-	for _, peer := range EL.m_peers {
-		conn, err := kcp.DialWithOptions(peer, nil, 10, 3)
-		if err == nil {
-			fmt.Printf("Connected to higher priority node: %s. Staying slave.\n", peer)
-			conn.Close()
-			Master = false
-			return
-		}
-	}
-	fmt.Println("No higher priority nodes available. Becoming master.")
-	Master = true
-}
-
-func TakeRequest(EL Elevator, request string) {
-	value, err := strconv.Atoi(request)
-	if err != nil {
-		// Handle the error appropriately
-		fmt.Println("Error converting string to int:", err)
-		return
-	}
-	if value%2 == 0 {
-		elevio.SetMotorDirection(elevio.MD_Up)
-		EL.m_dirn = elevio.MD_Up
-	}
 }
 
 /*
@@ -389,9 +373,12 @@ var (
 	IDCounter     int32 = 0
 )
 
+// UNDER PROGRESS:
 // ReadFromSlave accepts connections from slaves.
-func ReadFromSlave(receiver chan<- string) {
+/*
+func (_ELS ElevatorList) ReadFromSlave(receiver chan<- string) {
 	listener, err := kcp.ListenWithOptions(":4001", nil, 10, 3)
+
 	if err != nil {
 		log.Fatalf("Failed to start KCP server: %v", err)
 	}
@@ -404,37 +391,133 @@ func ReadFromSlave(receiver chan<- string) {
 			fmt.Printf("Error accepting connection: %v\n", err)
 			continue
 		}
-		// Use only the host (IP) part of the address
-		addr := conn.RemoteAddr().String()
-		host, _, err := net.SplitHostPort(addr)
+		remoteAddr := conn.RemoteAddr().(*net.UDPAddr).IP.String()
+
+		// Assign or retrieve the ID
+		mutex.Lock()
+		id, exists := ipToID[remoteAddr]
+
+		if !exists {
+			id = idCounter
+			ipToID[remoteAddr] = id
+			idCounter++
+		} else {
+			var update uint8 = uint8(BoolToInt(_ELS[id].m_requests[3][2])&0b1 | BoolToInt(_ELS[id].m_requests[2][2])&0b1<<1 | BoolToInt(_ELS[id].m_requests[1][2])&0b1<<2 | BoolToInt(_ELS[id].m_requests[0][2])&0b1<<3)
+			_, err = conn.Write([]byte{update})
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+		mutex.Unlock()
+
+		fmt.Printf("Slave connected from %s assigned ID: %d\n", remoteAddr, id)
+
+		receive := make(chan string, 10)
+
+		go HandleConnections(conn, receive)
+		go func() {
+			for data := range receive {
+				receiver <- data + strconv.Itoa(id)
+			}
+		}()
+	}
+}
+*/
+// HandleConnections reads data from the connection, processes it,
+// waits for an order, and sends a response back.
+/*
+func HandleConnections(conn *kcp.UDPSession, receive chan<- string) {
+	defer conn.Close()
+	buffer := make([]byte, 1024)
+	for {
+		n, err := conn.Read(buffer)
 		if err != nil {
-			host = addr // Fallback if splitting fails
+			if err == io.EOF {
+				log.Printf("Slave Disconnected")
+			} else {
+				log.Printf("Read error from Slave", err)
+			}
 		}
 
-		// Look up existing ID for this host, or assign a new one.
+		var data string
+		for _, b := range buffer[:n] {
+			data += fmt.Sprintf("%08b", b)
+		}
+		receive <- data
+		fmt.Println("Data Received", data)
+
+		response := "n"
+		response2 := []byte(response)
+
+		if len(masterOrder) > int(id) && len(masterOrder[id]) > 0 {
+			fmt.Println("if")
+			otherRequests := masterOrder[:slaveID]
+			otherRequests = append(otherRequests, masterOrder[slaveID+1:]...)
+			otherRequest := MergeRequestsSlice(otherRequests)
+			// TODO: Add other requests to response. Easiest if it can be two end bytes so it is easy to pick out.
+			response2 = []byte(EncodeMatrixToString(masterOrder[id]))
+			fmt.Println("If-sentence")
+		}
+
+		_, err = conn.Write([]byte(response2))
+		if err != nil {
+			log.Printf("Failed to send response to Slave", err)
+		}
+
+	}
+}*/
+
+// -------
+
+func (_ELS ElevatorList) ReadFromSlave(receiver chan<- string) {
+	listener, err := kcp.ListenWithOptions(":4001", nil, 10, 3)
+
+	if err != nil {
+		log.Fatalf("Failed to start KCP server: %v", err)
+	}
+	defer listener.Close()
+	fmt.Println("KCP Master (Server) listening on port 4001...")
+
+	for {
+		conn, err := listener.AcceptKCP()
+		if err != nil {
+			fmt.Printf("Error accepting connection: %v\n", err)
+			continue
+		}
+		addr := conn.RemoteAddr().String()
+		host, _, err := net.SplitHostPort(addr)
+
+		if err != nil {
+			host = addr
+		}
+
 		slaveMapMutex.Lock()
 		id, exists := slaveMap[host]
+
 		if !exists {
 			id = atomic.AddInt32(&IDCounter, 1)
 			slaveMap[host] = id
+		} else {
+			var update uint8 = uint8(BoolToInt(_ELS[id].m_requests[3][2])&0b1 | BoolToInt(_ELS[id].m_requests[2][2])&0b1<<1 | BoolToInt(_ELS[id].m_requests[1][2])&0b1<<2 | BoolToInt(_ELS[id].m_requests[0][2])&0b1<<3)
+			_, err = conn.Write([]byte{update})
+			if err != nil {
+				fmt.Println(err)
+			}
 		}
 		slaveMapMutex.Unlock()
 
-		fmt.Printf("Slave %d connected from %s!\n", id, host)
+		fmt.Printf("Slave connected from %s assigned ID: %d\n", id, host)
 
 		receive := make(chan string, 10)
 		orderChan := make(chan [][4][3]bool, 10)
 
-		// Associate the order channel with the slave ID
 		slaveMapMutex.Lock()
 		slaveOrderChans[id] = orderChan
 		slaveMapMutex.Unlock()
 
 		go HandleConnections(conn, receive, id, orderChan, host)
 		go func(slaveID int32) {
-
 			for data := range receive {
-				//encoded := fmt.Sprintf("%08b%08b%08b", data[0], data[1], data[2])
 				receiver <- data + strconv.Itoa(int(slaveID))
 			}
 		}(id)
@@ -443,6 +526,7 @@ func ReadFromSlave(receiver chan<- string) {
 
 // HandleConnections reads data from the connection, processes it,
 // waits for an order, and sends a response back.
+
 func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, orderChan <-chan [][4][3]bool, host string) {
 	defer conn.Close()
 	buffer := make([]byte, 1024)
@@ -450,11 +534,10 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 		n, err := conn.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
-				log.Printf("Slave %d (%s) disconnected\n", id, host)
+				log.Printf("Slave Disconnected")
 			} else {
-				log.Printf("Read error from Slave %d: %v\n", id, err)
+				log.Printf("Read error from Slave", err)
 			}
-			return
 		}
 
 		var data string
@@ -462,34 +545,36 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 			data += fmt.Sprintf("%08b", b)
 		}
 		receive <- data
+		fmt.Println("Data Received", data)
 
 		response := "n"
 		response2 := []byte(response)
 
 		select {
 		case masterOrder := <-orderChan:
-			fmt.Println("LEN MASTER")
-			fmt.Println(len(masterOrder))
-			fmt.Println(int(id))
-			fmt.Println(masterOrder)
 			if len(masterOrder) > int(id) && len(masterOrder[id]) > 0 {
 				fmt.Println("if")
-				response2 = []byte(EncodeMatrixToString(masterOrder[id]))
+				otherRequests := masterOrder[:id]
+				otherRequests = append(otherRequests, masterOrder[id+1:]...)
+				otherRequest := MergeRequestsSlice(otherRequests)
+				response2 = []byte(EncodeMatrixToString(masterOrder[id]) + EncodeMatrixToString(otherRequest))
 				fmt.Println("If-sentence")
 			}
 		case <-time.After(100 * time.Millisecond):
-			log.Printf("No master order available for Slave %d, sending default response.\n", id)
+			log.Printf("No master order available for slave %d, sending default response.\n", id)
 		}
 
-		_, err = conn.Write(response2)
+		_, err = conn.Write([]byte(response2))
 		if err != nil {
-			log.Printf("Failed to send response to Slave %d: %v\n", id, err)
-			return
+			log.Printf("Failed to send response to Slave", err)
 		}
+
 	}
 }
 
-func (EL *Elevator) SendToMaster(receiver chan<- string) {
+// -------
+
+func (EL *Elevator) SendToMaster(receiver chan<- string, _ELS *ElevatorList) {
 	conn, err := kcp.DialWithOptions("192.168.0.176:4001", nil, 10, 3)
 	if err != nil {
 		log.Fatalf("Failed to connect to master: %v", err)
@@ -527,7 +612,8 @@ func (EL *Elevator) SendToMaster(receiver chan<- string) {
 
 		if err != nil {
 			fmt.Println("Failed to read response:", err)
-			ActiveConnection = false
+			MasterCheck(rand.Intn(1500)+300, _ELS, EL) // TODO: change to pass py reference
+			ActiveConnection = false                   // look at removing use of activeconnection
 			continue
 		}
 		receiver <- string(buffer[:n])
@@ -568,5 +654,102 @@ func StringToByteList(s string) []byte {
 			result = append(result, 0)
 		}
 	}
+	return result
+}
+
+// New kristoffer functions:
+
+func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
+	timeoutDuration := time.Duration(masterTimer) * time.Millisecond
+	deadline := time.Now().Add(timeoutDuration)
+
+	fmt.Println("Searching for a master...")
+
+	for {
+		// Try to connect to a potential master using KCP
+		conn, err := kcp.DialWithOptions("255.255.255.255:4001", nil, 10, 3) // Broadcast
+		if err == nil {
+			conn.SetDeadline(time.Now().Add(100 * time.Millisecond))
+			_, err = conn.Write([]byte("ping"))
+			if err == nil {
+				// Wait for "ack" response
+				buffer := make([]byte, 1024)
+				n, err := conn.Read(buffer)
+				if err == nil && string(buffer[:n]) == "ack" {
+					fmt.Println("Master found! Running SendToMaster.")
+					Master = false
+					go _EL.SendToMaster(Send, _ELS)
+					conn.Close()
+					return
+				}
+			}
+			conn.Close()
+		}
+
+		// Check if timeout has expired
+		if time.Now().After(deadline) {
+			fmt.Println("No master found. Becoming master.")
+			Master = true
+			go ackResponder()
+			go _ELS.ReadFromSlave(Read)
+			return
+		}
+
+		// Retry after 1 second
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// ackResponder listens on port 4001 and responds to handshake messages.
+// It only sends "ack" if it receives a "ping".
+func ackResponder() {
+	listener, err := kcp.ListenWithOptions(":4001", nil, 10, 3) // Listen on all interfaces
+	if err != nil {
+		log.Fatalf("Failed to start KCP listener: %v", err)
+	}
+	defer listener.Close()
+	fmt.Println("Master is running and responding to KCP discovery requests.")
+
+	for {
+		conn, err := listener.AcceptKCP()
+		if err != nil {
+			log.Printf("Error accepting KCP connection: %v", err)
+			continue
+		}
+
+		// Handle each connection in a new goroutine
+		go func(c *kcp.UDPSession) {
+			defer c.Close()
+
+			// Read data
+			buffer := make([]byte, 1024)
+			n, err := c.Read(buffer)
+			if err != nil {
+				log.Printf("Error reading data: %v", err)
+				return
+			}
+
+			// If message is "ping", respond with "ack"
+			if string(buffer[:n]) == "ping" {
+				_, err = c.Write([]byte("ack"))
+				if err != nil {
+					log.Printf("Error sending ack: %v", err)
+				} else {
+					fmt.Println("Sent ack to a client")
+				}
+			}
+		}(conn)
+	}
+}
+
+func stringCabToRequest(bin string) [4][3]bool {
+	var result [4][3]bool
+
+	// Bits 0–3 → [3][2] to [0][2]
+	for i := 0; i < 4; i++ {
+		bit := bin[7-i] // rightmost bit is index 7
+		result[i][2] = bit == '1'
+	}
+
 	return result
 }
