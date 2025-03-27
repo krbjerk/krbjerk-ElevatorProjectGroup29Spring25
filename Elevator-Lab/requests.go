@@ -257,7 +257,7 @@ func EncodeMatrixToString(matrix [4][3]bool) string {
 func DecodeStringToMatrix(s string) [4][3]bool {
 	var matrix [4][3]bool
 	if len(s) != 12 {
-		fmt.Println("Invalid string length, must be 12")
+		fmt.Println("Invalid string length, must be 12. Actual length: ", len(s))
 		return matrix
 	}
 

@@ -615,7 +615,7 @@ func (EL *Elevator) SendToMaster(receiver chan<- string, _ELS *ElevatorList) {
 		receiver <- string(buffer[:n])
 		ActiveConnection = true
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }
 

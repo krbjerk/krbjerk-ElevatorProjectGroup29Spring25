@@ -173,9 +173,11 @@ func main() {
 				storedElevator.printElevatorState()
 				// Function that will verify request and give them to the elevator, and from there also start elevator if necessary.
 				if len(a) == 24 {
-					b := DecodeStringToMatrix(a[:11]) // need to decode. can use a[:11]
-					fmt.Println("strconv")
-					g_elevator.verifyRequest(false, b, localOtherRequest) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
+					b := DecodeStringToMatrix(a[:12]) // need to decode. can use a[:11]
+					c := DecodeStringToMatrix(a[12:])
+					fmt.Println("requests from master")
+					fmt.Println(b)
+					g_elevator.verifyRequest(false, b, c) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
 				} else if len(a) == 8 {
 					g_elevator.m_requests = MergeRequests(g_elevator.m_requests, stringCabToRequest(a))
 				}
