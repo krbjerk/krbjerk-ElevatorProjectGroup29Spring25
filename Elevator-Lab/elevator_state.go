@@ -81,7 +81,7 @@ func (_e *Elevator) handleButtonPress(_btnFloor int, _btnType elevio.ButtonType,
 	}
 }
 
-func (_e *Elevator) toElevator(_btnFloor int, _btnType elevio.ButtonType) {
+func (_e *Elevator) toElevator(_btnFloor int, _btnType elevio.ButtonType, otherRequest [4][3]bool) {
 	switch _e.m_behavior {
 	case EB_DoorOpen:
 		fmt.Println("Door is open.")
@@ -91,7 +91,7 @@ func (_e *Elevator) toElevator(_btnFloor int, _btnType elevio.ButtonType) {
 		} else {
 			_e.m_requests[_btnFloor][_btnType] = true
 			if checkTimerExpired(g_timer) {
-				_e.processRequest()
+				_e.processRequest(otherRequest)
 				fmt.Println("Acted on request.")
 			}
 		}
@@ -101,16 +101,16 @@ func (_e *Elevator) toElevator(_btnFloor int, _btnType elevio.ButtonType) {
 	case EB_Idle:
 		_e.m_requests[_btnFloor][_btnType] = true
 		if checkTimerExpired(g_timer) {
-			_e.processRequest()
+			_e.processRequest(otherRequest)
 			fmt.Println("Acted on request.")
 		}
 	}
-	_e.updateLights()
+	_e.updateLights(otherRequest)
 	_e.printElevatorState()
 }
 
 // Handle elevator arriving at a floor
-func (_e *Elevator) handleFloorArrival(_newFloor int) {
+func (_e *Elevator) handleFloorArrival(_newFloor int, otherRequest [4][3]bool) {
 	fmt.Println("Arrived at floor:", _newFloor)
 	_e.m_floor = _newFloor
 	elevio.SetFloorIndicator(_e.m_floor)
@@ -121,7 +121,7 @@ func (_e *Elevator) handleFloorArrival(_newFloor int) {
 		elevio.SetDoorOpenLamp(true)
 		_e.clearRequestsAtCurrentFloor()
 		g_timer.startTimer(DOOR_OPEN_DURATION)
-		_e.updateLights()
+		_e.updateLights(otherRequest)
 		_e.m_behavior = EB_DoorOpen
 		//_e.m_dirn = elevio.MD_Stop
 	}
@@ -129,7 +129,7 @@ func (_e *Elevator) handleFloorArrival(_newFloor int) {
 }
 
 // Handle door timeout event
-func (_e *Elevator) handleDoorTimeout() {
+func (_e *Elevator) handleDoorTimeout(otherRequest [4][3]bool) {
 	fmt.Println("Door timeout, checking requests.")
 	if _e.m_obstruction {
 		g_timer.startTimer(DOOR_OPEN_DURATION)
@@ -142,20 +142,20 @@ func (_e *Elevator) handleDoorTimeout() {
 		case EB_DoorOpen:
 			g_timer.startTimer(DOOR_OPEN_DURATION)
 			_e.clearRequestsAtCurrentFloor()
-			_e.updateLights()
+			_e.updateLights(otherRequest)
 		case EB_Moving:
 			elevio.SetMotorDirection(_e.m_dirn)
 			elevio.SetDoorOpenLamp(false)
 		case EB_Idle:
 			elevio.SetDoorOpenLamp(false)
-			_e.processRequest()
+			_e.processRequest(otherRequest)
 		}
 	}
 	_e.printElevatorState()
 }
 
 // Process elevator request
-func (_e *Elevator) processRequest() {
+func (_e *Elevator) processRequest(otherRequest [4][3]bool) {
 	twin := _e.determineDirection()
 	_e.m_dirn = twin.m_dirn
 	_e.m_behavior = twin.m_behavior
@@ -163,7 +163,7 @@ func (_e *Elevator) processRequest() {
 	switch twin.m_behavior {
 	case EB_DoorOpen:
 		_e.clearRequestsAtCurrentFloor()
-		_e.updateLights()
+		_e.updateLights(otherRequest)
 	case EB_Moving:
 		elevio.SetMotorDirection(_e.m_dirn)
 		elevio.SetDoorOpenLamp(false)
@@ -173,11 +173,21 @@ func (_e *Elevator) processRequest() {
 }
 
 // Update elevator lights
-func (_e Elevator) updateLights() {
+/*func (_e Elevator) updateLights() {
 	var BTNS = []elevio.ButtonType{elevio.BT_HallUp, elevio.BT_HallDown, elevio.BT_Cab}
 	for _floor := 0; _floor < NUM_FLOORS; _floor++ {
 		for _, _btn := range BTNS {
 			elevio.SetButtonLamp(_btn, _floor, _e.m_requests[_floor][_btn])
+		}
+	}
+}*/
+
+func (_e Elevator) updateLights(otherElevators [4][3]bool) {
+	var BTNS = []elevio.ButtonType{elevio.BT_HallUp, elevio.BT_HallDown, elevio.BT_Cab}
+	for _floor := 0; _floor < NUM_FLOORS; _floor++ {
+		for n, _btn := range BTNS {
+			shouldLight := _e.m_requests[_floor][_btn] || otherElevators[_floor][n]
+			elevio.SetButtonLamp(_btn, _floor, shouldLight)
 		}
 	}
 }

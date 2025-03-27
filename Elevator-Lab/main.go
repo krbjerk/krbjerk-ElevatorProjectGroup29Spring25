@@ -8,7 +8,7 @@ import (
 
 func main() {
 
-	g_elevator := Elevator{
+	init_elevator := Elevator{
 		m_id:       0,
 		m_floor:    0,
 		m_dirn:     0,
@@ -17,14 +17,17 @@ func main() {
 		m_peers:    []string{},
 	}
 
-	var Master bool = false
+	g_elevator := init_elevator
+	var localOtherRequest [4][3]bool // TODO: Musyt define it at start. can be all false
 
-	var ELS []Elevator = make([]Elevator, 3)
-	var storedELS []Elevator = make([]Elevator, 3)
-	for i := range ELS {
+	var Master bool = true
+
+	var ELS []Elevator = make([]Elevator, 1)
+	var storedELS []Elevator = make([]Elevator, 1)
+	/*for i := range ELS {
 		ELS[i].m_requests = [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}}
 		storedELS[i].m_requests = [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}}
-	}
+	}*/
 
 	elevio.Init("localhost:15657", NUM_FLOORS)
 
@@ -54,16 +57,23 @@ func main() {
 			case a := <-Read:
 				// -------------------------------------------------------------------------------------------------------------
 				slaveID := int(a[24] - '0') // Adjust this as needed
-				fmt.Println(a[:24])
 				ELS[0] = g_elevator
 				ELS[0].m_requests = storedElevator.m_requests
+
+				if len(ELS) < slaveID+1 {
+					ELS = append(ELS, init_elevator)
+					storedELS = append(storedELS, init_elevator)
+					fmt.Println("New elevator")
+				}
+				fmt.Println(a[:24])
 				ELS[slaveID] = DecodeElevatorFromString(a[:24])
 				ELS[slaveID].printElevatorState()
+				fmt.Println(ELS[slaveID].m_requests)
 				// ------
 				// if new ELS != storedELS
 				// 		then remove the overlapping requests from new ELS
-				//		storedELS = new ELS
-				for k := 0; k < 3; k++ {
+				//		storedELS = new ELSz
+				for k := 0; k < len(ELS); k++ {
 					for i := 0; i < NUM_FLOORS; i++ {
 						for j := 0; j < 3; j++ {
 							if ELS[k].m_requests[i][j] && storedELS[k].m_requests[i][j] {
@@ -80,6 +90,19 @@ func main() {
 				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
 				fmt.Println("0")
 				//fmt.Println(order)
+
+				// ---
+				otherRequests := order[:slaveID]
+				otherRequests = append(otherRequests, order[slaveID+1:]...)
+				otherRequest := MergeRequestsSlice(otherRequests)
+				// TODO: Move this code into handleconnections
+				// Send this list to the slaves and make a function that turns on and off the lights
+				// based on the values in it
+
+				localOtherRequests := order[1:]
+				localOtherRequest = MergeRequestsSlice(localOtherRequests)
+
+				// ---
 				slaveMapMutex.Lock()
 				ch, ok := slaveOrderChans[int32(slaveID)]
 				slaveMapMutex.Unlock()
@@ -111,13 +134,13 @@ func main() {
 				ELS[0].m_requests = storedElevator.m_requests
 				order := MakeRequest(ELS)
 				if len(order) > 0 && len(order[0]) > 0 {
-					g_elevator.verifyRequest(order[0])
+					g_elevator.verifyRequest(order[0], localOtherRequest)
 				} else {
 					fmt.Println("Order list is empty or improperly formatted.")
 				}
 
 			case a := <-drv_floors:
-				g_elevator.handleFloorArrival(a)
+				g_elevator.handleFloorArrival(a, localOtherRequest)
 
 			case a := <-drv_obstr:
 				g_elevator.setObstruction(a)
@@ -126,7 +149,7 @@ func main() {
 
 			case <-timeoutTicker.C:
 				if g_timer.timedOut() {
-					g_elevator.handleDoorTimeout()
+					g_elevator.handleDoorTimeout(localOtherRequest)
 				}
 			}
 		}
@@ -144,14 +167,14 @@ func main() {
 				if string(a) != "n" {
 					b := DecodeStringToMatrix(a)
 					fmt.Println("strconv")
-					g_elevator.verifyRequest(b) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
+					g_elevator.verifyRequest(b, localOtherRequest) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
 				}
 
 			case a := <-drv_buttons:
 				g_elevator.handleButtonPress(a.Floor, a.Button, ActiveConnection) // Also need paramter for connection. Necessary to differ between button-light contract and standalone
 
 			case a := <-drv_floors:
-				g_elevator.handleFloorArrival(a)
+				g_elevator.handleFloorArrival(a, localOtherRequest)
 
 			case a := <-drv_obstr:
 				g_elevator.setObstruction(a)
@@ -160,7 +183,7 @@ func main() {
 
 			case <-timeoutTicker.C:
 				if g_timer.timedOut() {
-					g_elevator.handleDoorTimeout()
+					g_elevator.handleDoorTimeout(localOtherRequest)
 				}
 			}
 			temp_requests := storedElevator.m_requests

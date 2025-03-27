@@ -142,7 +142,7 @@ func (_e *Elevator) clearRequestsAtCurrentFloor() {
 	}
 }
 
-func (_e *Elevator) verifyRequest(_requestsFromMaster [4][3]bool) {
+func (_e *Elevator) verifyRequest(_requestsFromMaster [4][3]bool, otherRequest [4][3]bool) {
 	// Declare startFloor and startButton outside the loop so they persist
 	fmt.Println("response from master", _requestsFromMaster)
 	startFloor := -1
@@ -169,7 +169,7 @@ func (_e *Elevator) verifyRequest(_requestsFromMaster [4][3]bool) {
 
 	// Only call if a valid request was found
 	if startFloor != -1 && startButton != -1 {
-		_e.toElevator(startFloor, elevio.ButtonType(startButton))
+		_e.toElevator(startFloor, elevio.ButtonType(startButton), otherRequest)
 	}
 }
 
@@ -269,4 +269,18 @@ func TriggerFirstRequest(matrix [4][3]bool, sendFunc func(floor int, btn elevio.
 			}
 		}
 	}
+}
+
+func MergeRequestsSlice(requests [][4][3]bool) [4][3]bool {
+	var merged [4][3]bool
+
+	for _, r := range requests {
+		for floor := 0; floor < 4; floor++ {
+			for btn := 0; btn < 3; btn++ {
+				merged[floor][btn] = merged[floor][btn] || r[floor][btn]
+			}
+		}
+	}
+
+	return merged
 }
