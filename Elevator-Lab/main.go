@@ -17,7 +17,7 @@ func main() {
 		m_peers:    []string{},
 	}
 
-	var Master bool = true
+	var Master bool = false
 
 	var ELS []Elevator = make([]Elevator, 3)
 	var storedELS []Elevator = make([]Elevator, 3)

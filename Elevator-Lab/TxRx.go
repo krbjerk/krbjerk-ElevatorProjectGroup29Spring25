@@ -194,20 +194,48 @@ func EncodeElevator(e *Elevator) [3]byte {
 	return [3]byte{b0, b1, b2}
 }
 
-func DecodeElevatorFromString(a string) Elevator {
-	return Elevator{
-		m_id:       int(a[16] - '0'),
-		m_floor:    (int(a[0]-'0') << 1) + int(a[1]-'0'),
-		m_dirn:     elevio.MotorDirection(((int(a[2]-'0') << 1) + int(a[3]-'0')) - 1),
-		m_behavior: ElevatorBehavior((int(a[4]-'0') << 1) + int(a[5]-'0')),
-		m_requests: [4][3]bool{
-			{a[6] == '1', false, a[7] == '1'},          // floor 0
-			{a[8] == '1', a[9] == '1', a[10] == '1'},   // floor 1
-			{a[11] == '1', a[12] == '1', a[13] == '1'}, // floor 2
-			{false, a[14] == '1', a[15] == '1'},        // floor 3
-		},
-		m_peers: []string{}, // You can modify this later if needed
+func DecodeElevator(data [3]byte) Elevator {
+	var e Elevator
+	b0, b1, b2 := data[0], data[1], data[2]
+
+	// --- Byte 0: floors 0..1 ---
+	// floor 0
+	e.m_requests[0][0] = (b0 & (1 << 0)) != 0 // up[0]
+	e.m_requests[0][1] = (b0 & (1 << 1)) != 0 // down[0]
+	e.m_requests[0][2] = (b0 & (1 << 2)) != 0 // cab[0]
+	// floor 1
+	e.m_requests[1][0] = (b0 & (1 << 3)) != 0 // up[1]
+	e.m_requests[1][1] = (b0 & (1 << 4)) != 0 // down[1]
+	e.m_requests[1][2] = (b0 & (1 << 5)) != 0 // cab[1]
+
+	// --- Byte 1: floors 2..3 ---
+	// floor 2
+	e.m_requests[2][0] = (b1 & (1 << 0)) != 0 // up[2]
+	e.m_requests[2][1] = (b1 & (1 << 1)) != 0 // down[2]
+	e.m_requests[2][2] = (b1 & (1 << 2)) != 0 // cab[2]
+	// floor 3
+	e.m_requests[3][0] = (b1 & (1 << 3)) != 0 // up[3]
+	e.m_requests[3][1] = (b1 & (1 << 4)) != 0 // down[3]
+	e.m_requests[3][2] = (b1 & (1 << 5)) != 0 // cab[3]
+
+	// --- Byte 2: elevator state ---
+	e.m_behavior = ElevatorBehavior(b2 & 0b11)               // bits 0..1
+	e.m_dirn = elevio.MotorDirection(((b2 >> 2) & 0b11) - 1) // bits 2..3 - 1
+	e.m_floor = int((b2 >> 4) & 0b11)                        // bits 4..5
+
+	return e
+}
+
+func DecodeElevatorFromString(s string) Elevator {
+	if len(s) != 24 {
+		fmt.Println("DecodeElevatorFromString: invalid length:", len(s))
+		return Elevator{}
 	}
+	b0, _ := strconv.ParseUint(s[0:8], 2, 8)
+	b1, _ := strconv.ParseUint(s[8:16], 2, 8)
+	b2, _ := strconv.ParseUint(s[16:24], 2, 8)
+
+	return DecodeElevator([3]byte{byte(b0), byte(b1), byte(b2)})
 }
 
 func MakeElevator(a string) (b Elevator) {
@@ -364,6 +392,8 @@ func (EL *Elevator) SendToMaster(receiver chan<- string) {
 		//EL.printElevatorState()
 		//var package1 uint8 = uint8(BoolToInt(EL.m_requests[0][2])&0b1 | BoolToInt(EL.m_requests[0][0])&0b1<<1 | int(EL.m_behavior)&0b11<<2 | int(EL.m_dirn+1)&0b11<<4 | int(EL.m_floor)&0b11<<6)
 		//var package2 uint8 = uint8(BoolToInt(EL.m_requests[3][2])&0b1 | BoolToInt(EL.m_requests[3][0])&0b1<<1 | BoolToInt(EL.m_requests[2][2])&0b1<<2 | BoolToInt(EL.m_requests[2][1])&0b1<<3 | BoolToInt(EL.m_requests[2][0])&0b1<<4 | BoolToInt(EL.m_requests[1][2])&0b1<<5 | BoolToInt(EL.m_requests[1][1])&0b1<<6 | BoolToInt(EL.m_requests[1][0])&0b1<<7)
+		fmt.Println("Rett for")
+		EL.printElevatorState()
 		packet := EncodeElevator(EL)
 		fmt.Println()
 		_, err := conn.Write(packet[:])
