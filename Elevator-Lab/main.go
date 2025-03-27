@@ -55,6 +55,7 @@ func main() {
 		if Master { // Master is in TxRx
 			select {
 			case a := <-Read:
+				fmt.Println("storedRequests")
 				// -------------------------------------------------------------------------------------------------------------
 				slaveID := int(a[24] - '0') // Adjust this as needed
 				ELS[0] = g_elevator
@@ -66,15 +67,19 @@ func main() {
 					storedELS = append(storedELS, init_elevator)
 					fmt.Println("New elevator")
 				}
-				fmt.Println(a[:24])
 				ELS[slaveID] = DecodeElevatorFromString(a[:24])
+
+				fmt.Println("Elevator:", 0)
+				ELS[0].printElevatorState()
+				fmt.Println("Elevator:", slaveID)
 				ELS[slaveID].printElevatorState()
-				fmt.Println(ELS[slaveID].m_requests)
 				// ------
 				// if new ELS != storedELS
 				// 		then remove the overlapping requests from new ELS
 				//		storedELS = new ELSz
-				for k := 0; k < len(ELS); k++ {
+				/*for k := 0; k < len(ELS); k++ {
+					//fmt.Println("orders, elevator number: ", k)
+					//fmt.Println(ELS[k].m_requests)
 					for i := 0; i < NUM_FLOORS; i++ {
 						for j := 0; j < 3; j++ {
 							if ELS[k].m_requests[i][j] && storedELS[k].m_requests[i][j] {
@@ -86,19 +91,12 @@ func main() {
 						}
 					}
 
-				}
+				}*/
 				// ------
 				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
-				fmt.Println("0")
+				fmt.Println("Order made:")
+				fmt.Println(order)
 				//fmt.Println(order)
-
-				// ---
-				//otherRequests := order[:slaveID]
-				//otherRequests = append(otherRequests, order[slaveID+1:]...)
-				//otherRequest := MergeRequestsSlice(otherRequests)
-				// TODO: Move this code into handleconnections
-				// Send this list to the slaves and make a function that turns on and off the lights
-				// based on the values in it
 
 				localOtherRequests := order[1:]
 				localOtherRequest = MergeRequestsSlice(localOtherRequests)
@@ -110,7 +108,7 @@ func main() {
 				if ok {
 					select {
 					case ch <- order: // ACTUALLY SEND TO SLAVE
-						fmt.Println("In select, ch<-order", order)
+						//fmt.Println("In select, ch<-order", order)
 						// We could change the elevators here so that it drops the request.
 					default:
 						fmt.Printf("Slave %d's order channel is full; skipping update.\n", slaveID)
@@ -132,10 +130,16 @@ func main() {
 				g_elevator.handleButtonPress(a.Floor, a.Button, true, localOtherRequest)
 
 				ELS[0] = g_elevator
-				ELS[0].m_requests = storedElevator.m_requests
+				ELS[0].m_requests = storedElevator.m_requests //
 				order := MakeRequest(ELS)
-				if len(order) > 0 && len(order[0]) > 0 {
-					g_elevator.verifyRequest(order[0], localOtherRequest)
+				// ORDER
+				fmt.Println("Order made after button press")
+				fmt.Println(order)
+				localOtherRequests := order[1:]
+				localOtherRequest = MergeRequestsSlice(localOtherRequests)
+				if len(order) > 0 {
+					fmt.Println("time to verify.")
+					//g_elevator.verifyRequest(order[0], localOtherRequest) // Problem ved å bruke denne funksjonen fra master
 				} else {
 					fmt.Println("Order list is empty or improperly formatted.")
 				}

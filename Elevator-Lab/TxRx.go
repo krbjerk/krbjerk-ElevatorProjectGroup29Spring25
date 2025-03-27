@@ -470,7 +470,7 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string) {
 // -------
 
 func (_ELS ElevatorList) ReadFromSlave(receiver chan<- string) {
-	listener, err := kcp.ListenWithOptions(":4001", nil, 10, 3)
+	listener, err := kcp.ListenWithOptions(":4000", nil, 10, 3)
 
 	if err != nil {
 		log.Fatalf("Failed to start KCP server: %v", err)
@@ -553,12 +553,10 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 		select {
 		case masterOrder := <-orderChan:
 			if len(masterOrder) > int(id) && len(masterOrder[id]) > 0 {
-				fmt.Println("if")
 				otherRequests := masterOrder[:id]
 				otherRequests = append(otherRequests, masterOrder[id+1:]...)
 				otherRequest := MergeRequestsSlice(otherRequests)
 				response2 = []byte(EncodeMatrixToString(masterOrder[id]) + EncodeMatrixToString(otherRequest))
-				fmt.Println("If-sentence")
 			}
 		case <-time.After(100 * time.Millisecond):
 			log.Printf("No master order available for slave %d, sending default response.\n", id)
@@ -575,7 +573,7 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 // -------
 
 func (EL *Elevator) SendToMaster(receiver chan<- string, _ELS *ElevatorList) {
-	conn, err := kcp.DialWithOptions("192.168.0.176:4001", nil, 10, 3)
+	conn, err := kcp.DialWithOptions("192.168.0.176:4000", nil, 10, 3)
 	if err != nil {
 		log.Fatalf("Failed to connect to master: %v", err)
 	}
@@ -587,10 +585,8 @@ func (EL *Elevator) SendToMaster(receiver chan<- string, _ELS *ElevatorList) {
 		//EL.printElevatorState()
 		//var package1 uint8 = uint8(BoolToInt(EL.m_requests[0][2])&0b1 | BoolToInt(EL.m_requests[0][0])&0b1<<1 | int(EL.m_behavior)&0b11<<2 | int(EL.m_dirn+1)&0b11<<4 | int(EL.m_floor)&0b11<<6)
 		//var package2 uint8 = uint8(BoolToInt(EL.m_requests[3][2])&0b1 | BoolToInt(EL.m_requests[3][0])&0b1<<1 | BoolToInt(EL.m_requests[2][2])&0b1<<2 | BoolToInt(EL.m_requests[2][1])&0b1<<3 | BoolToInt(EL.m_requests[2][0])&0b1<<4 | BoolToInt(EL.m_requests[1][2])&0b1<<5 | BoolToInt(EL.m_requests[1][1])&0b1<<6 | BoolToInt(EL.m_requests[1][0])&0b1<<7)
-		fmt.Println("Rett for")
 		EL.printElevatorState()
 		packet := EncodeElevator(EL)
-		fmt.Println()
 		_, err := conn.Write(packet[:])
 		if err != nil {
 			log.Println("Failed to send data:", err)
@@ -667,7 +663,7 @@ func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
 
 	for {
 		// Try to connect to a potential master using KCP
-		conn, err := kcp.DialWithOptions("255.255.255.255:4001", nil, 10, 3) // Broadcast
+		conn, err := kcp.DialWithOptions("192.168.0.176:4001", nil, 10, 3) // Broadcast
 		if err == nil {
 			conn.SetDeadline(time.Now().Add(100 * time.Millisecond))
 			_, err = conn.Write([]byte("ping"))

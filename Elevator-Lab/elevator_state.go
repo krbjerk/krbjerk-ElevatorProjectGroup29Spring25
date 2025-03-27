@@ -69,7 +69,7 @@ func (_e *Elevator) initElevator() {
 // Handle a button press	TODO: PROBLEMSS
 func (_e *Elevator) handleButtonPress(_btnFloor int, _btnType elevio.ButtonType, _connection bool, otherRequest [4][3]bool) {
 	fmt.Println("Button press")
-	_e.printElevatorState()
+	//_e.printElevatorState()
 	if _connection {
 		// Store requests
 		if _btnType != elevio.BT_Cab {
@@ -86,15 +86,15 @@ func (_e *Elevator) handleButtonPress(_btnFloor int, _btnType elevio.ButtonType,
 func (_e *Elevator) toElevator(_btnFloor int, _btnType elevio.ButtonType, otherRequest [4][3]bool) {
 	switch _e.m_behavior {
 	case EB_DoorOpen:
-		fmt.Println("Door is open.")
+		//fmt.Println("Door is open.")
 		if _e.m_floor == _btnFloor {
 			g_timer.startTimer(DOOR_OPEN_DURATION)
-			fmt.Println("door timeout 1")
+			//fmt.Println("door timeout 1")
 		} else {
 			_e.m_requests[_btnFloor][_btnType] = true
 			if checkTimerExpired(g_timer) {
 				_e.processRequest(otherRequest)
-				fmt.Println("Acted on request.")
+				//fmt.Println("Acted on request.")
 			}
 		}
 
@@ -104,21 +104,21 @@ func (_e *Elevator) toElevator(_btnFloor int, _btnType elevio.ButtonType, otherR
 		_e.m_requests[_btnFloor][_btnType] = true
 		if checkTimerExpired(g_timer) {
 			_e.processRequest(otherRequest)
-			fmt.Println("Acted on request.")
+			//fmt.Println("Acted on request.")
 		}
 	}
 	_e.updateLights(otherRequest)
-	_e.printElevatorState()
+	//_e.printElevatorState()
 }
 
 // Handle elevator arriving at a floor
 func (_e *Elevator) handleFloorArrival(_newFloor int, otherRequest [4][3]bool) {
-	fmt.Println("Arrived at floor:", _newFloor)
+	//fmt.Println("Arrived at floor:", _newFloor)
 	_e.m_floor = _newFloor
 	elevio.SetFloorIndicator(_e.m_floor)
 
 	if _e.m_behavior == EB_Moving && _e.shouldStopAtCurrentFloor() {
-		fmt.Println("Stopping elevator at floor:", _newFloor)
+		//fmt.Println("Stopping elevator at floor:", _newFloor)
 		elevio.SetMotorDirection(elevio.MD_Stop)
 		elevio.SetDoorOpenLamp(true)
 		_e.clearRequestsAtCurrentFloor()
@@ -127,12 +127,12 @@ func (_e *Elevator) handleFloorArrival(_newFloor int, otherRequest [4][3]bool) {
 		_e.m_behavior = EB_DoorOpen
 		//_e.m_dirn = elevio.MD_Stop
 	}
-	_e.printElevatorState()
+	//_e.printElevatorState()
 }
 
 // Handle door timeout event
 func (_e *Elevator) handleDoorTimeout(otherRequest [4][3]bool) {
-	fmt.Println("Door timeout, checking requests.")
+	//fmt.Println("Door timeout, checking requests.")
 	if _e.m_obstruction {
 		g_timer.startTimer(DOOR_OPEN_DURATION)
 	} else if _e.m_behavior == EB_DoorOpen {
@@ -153,7 +153,7 @@ func (_e *Elevator) handleDoorTimeout(otherRequest [4][3]bool) {
 			_e.processRequest(otherRequest)
 		}
 	}
-	_e.printElevatorState()
+	//_e.printElevatorState()
 }
 
 // Process elevator request
