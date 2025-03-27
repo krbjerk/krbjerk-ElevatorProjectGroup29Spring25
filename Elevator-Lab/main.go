@@ -55,7 +55,8 @@ func main() {
 		if Master { // Master is in TxRx
 			select {
 			case a := <-Read:
-				fmt.Println("storedRequests")
+				fmt.Println("StoredElevator")
+				fmt.Println(storedElevator.m_requests)
 				// -------------------------------------------------------------------------------------------------------------
 				slaveID := int(a[24] - '0') // Adjust this as needed
 				ELS[0] = g_elevator
@@ -98,8 +99,13 @@ func main() {
 				fmt.Println(order)
 				//fmt.Println(order)
 
-				localOtherRequests := order[1:]
-				localOtherRequest = MergeRequestsSlice(localOtherRequests)
+				for i := 0; i < NUM_FLOORS; i++ {
+					for j := 0; j < 3; j++ {
+						if storedElevator.m_requests[i][j] && MergeRequestsSlice(order)[i][j] {
+							storedElevator.m_requests[i][j] = false
+						}
+					}
+				}
 
 				// ---
 				slaveMapMutex.Lock()
@@ -115,12 +121,11 @@ func main() {
 					}
 				}
 				if len(order) > 0 {
-					//g_elevator.verifyRequest(ConvertToElevatorRequests(order[0][0]))
-					//g_elevator.m_requests = MergeRequests(g_elevator.m_requests, ConvertToElevatorRequests(order[0][0]))
 					fmt.Println("Sending to local elevator.")
+					localOtherRequests := order[1:]
+					localOtherRequest = MergeRequestsSlice(localOtherRequests)
 					g_elevator.m_requests = MergeRequests(g_elevator.m_requests, order[0])
 					TriggerFirstRequest(order[0], g_elevator.toElevator, localOtherRequest)
-					//g_elevator.toElevator(GetFloor(order[0][0]), elevio.ButtonType(GetButtonType(order[0][0])))
 
 				} else {
 					fmt.Println("Order list is empty or improperly formatted.")
@@ -128,6 +133,8 @@ func main() {
 				// -------------------------------------------------------------------------------------------------------------
 			case a := <-drv_buttons:
 				g_elevator.handleButtonPress(a.Floor, a.Button, true, localOtherRequest)
+				fmt.Println("StoredElevator")
+				fmt.Println(storedElevator.m_requests)
 
 				ELS[0] = g_elevator
 				ELS[0].m_requests = storedElevator.m_requests //
@@ -139,7 +146,7 @@ func main() {
 				localOtherRequest = MergeRequestsSlice(localOtherRequests)
 				if len(order) > 0 {
 					fmt.Println("time to verify.")
-					//g_elevator.verifyRequest(order[0], localOtherRequest) // Problem ved å bruke denne funksjonen fra master
+					g_elevator.verifyRequest(true, order[0], localOtherRequest)
 				} else {
 					fmt.Println("Order list is empty or improperly formatted.")
 				}
@@ -168,7 +175,7 @@ func main() {
 				if len(a) == 24 {
 					b := DecodeStringToMatrix(a[:11]) // need to decode. can use a[:11]
 					fmt.Println("strconv")
-					g_elevator.verifyRequest(b, localOtherRequest) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
+					g_elevator.verifyRequest(false, b, localOtherRequest) // WHAT WILL ACTUALLY BE SENT TO THE SLAVE FROM MASTER??
 				} else if len(a) == 8 {
 					g_elevator.m_requests = MergeRequests(g_elevator.m_requests, stringCabToRequest(a))
 				}

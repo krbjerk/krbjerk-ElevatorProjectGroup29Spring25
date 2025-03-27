@@ -149,7 +149,7 @@ func (_e *Elevator) clearRequestsAtCurrentFloor() {
 	}
 }
 
-func (_e *Elevator) verifyRequest(_requestsFromMaster [4][3]bool, otherRequest [4][3]bool) {
+func (_e *Elevator) verifyRequest(master bool, _requestsFromMaster [4][3]bool, otherRequest [4][3]bool) {
 	// Declare startFloor and startButton outside the loop so they persist
 	//fmt.Println("response from master", _requestsFromMaster)
 	startFloor := -1
@@ -158,7 +158,7 @@ func (_e *Elevator) verifyRequest(_requestsFromMaster [4][3]bool, otherRequest [
 	// Check equality between stored requests and master requests
 	for i := 0; i < NUM_FLOORS; i++ {
 		for j := 0; j < 3; j++ {
-			if _requestsFromMaster[i][j] && storedElevator.m_requests[i][j] {
+			if _requestsFromMaster[i][j] {
 				fmt.Println("request offcialy given to elevator.")
 				_e.m_requests[i][j] = true
 				storedElevator.m_requests[i][j] = false // Assuming storedElevator.m_requests belongs to _e
@@ -169,7 +169,9 @@ func (_e *Elevator) verifyRequest(_requestsFromMaster [4][3]bool, otherRequest [
 					startButton = j
 				}
 			} else if otherRequest[i][j] && storedElevator.m_requests[i][j] {
-				storedElevator.m_requests[i][j] = false
+				if !master {
+					storedElevator.m_requests[i][j] = false
+				}
 			}
 			// Insert when you have new makeRequest and can send that TODO
 		}

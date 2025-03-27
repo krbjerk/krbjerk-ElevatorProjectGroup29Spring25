@@ -68,7 +68,9 @@ func (_e *Elevator) initElevator() {
 
 // Handle a button press	TODO: PROBLEMSS
 func (_e *Elevator) handleButtonPress(_btnFloor int, _btnType elevio.ButtonType, _connection bool, otherRequest [4][3]bool) {
+	fmt.Println("-----------------")
 	fmt.Println("Button press")
+	fmt.Println("-----------------")
 	//_e.printElevatorState()
 	if _connection {
 		// Store requests
@@ -125,7 +127,7 @@ func (_e *Elevator) handleFloorArrival(_newFloor int, otherRequest [4][3]bool) {
 		g_timer.startTimer(DOOR_OPEN_DURATION)
 		_e.updateLights(otherRequest)
 		_e.m_behavior = EB_DoorOpen
-		//_e.m_dirn = elevio.MD_Stop
+		_e.m_dirn = elevio.MD_Stop
 	}
 	//_e.printElevatorState()
 }
