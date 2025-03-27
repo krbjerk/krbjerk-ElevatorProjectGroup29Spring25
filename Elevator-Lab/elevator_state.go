@@ -65,7 +65,7 @@ func (_e *Elevator) initElevator() {
 }
 
 // Handle a button press	TODO: PROBLEMSS
-func (_e *Elevator) handleButtonPress(_btnFloor int, _btnType elevio.ButtonType, _connection bool) {
+func (_e *Elevator) handleButtonPress(_btnFloor int, _btnType elevio.ButtonType, _connection bool, otherRequest [4][3]bool) {
 	fmt.Println("Button press")
 	_e.printElevatorState()
 	if _connection {
@@ -73,11 +73,11 @@ func (_e *Elevator) handleButtonPress(_btnFloor int, _btnType elevio.ButtonType,
 		if _btnType != elevio.BT_Cab {
 			setStoredRequests(_btnFloor, _btnType)
 		} else {
-			_e.toElevator(_btnFloor, _btnType)
+			_e.toElevator(_btnFloor, _btnType, otherRequest)
 		}
 
 	} else {
-		_e.toElevator(_btnFloor, _btnType)
+		_e.toElevator(_btnFloor, _btnType, otherRequest)
 	}
 }
 

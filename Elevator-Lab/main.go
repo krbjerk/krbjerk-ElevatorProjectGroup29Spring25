@@ -18,7 +18,7 @@ func main() {
 	}
 
 	g_elevator := init_elevator
-	var localOtherRequest [4][3]bool // TODO: Musyt define it at start. can be all false
+	var localOtherRequest [4][3]bool = [4][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}} // TODO: Musyt define it at start. can be all false
 
 	var Master bool = true
 
@@ -92,9 +92,9 @@ func main() {
 				//fmt.Println(order)
 
 				// ---
-				otherRequests := order[:slaveID]
-				otherRequests = append(otherRequests, order[slaveID+1:]...)
-				otherRequest := MergeRequestsSlice(otherRequests)
+				//otherRequests := order[:slaveID]
+				//otherRequests = append(otherRequests, order[slaveID+1:]...)
+				//otherRequest := MergeRequestsSlice(otherRequests)
 				// TODO: Move this code into handleconnections
 				// Send this list to the slaves and make a function that turns on and off the lights
 				// based on the values in it
@@ -120,7 +120,7 @@ func main() {
 					//g_elevator.m_requests = MergeRequests(g_elevator.m_requests, ConvertToElevatorRequests(order[0][0]))
 					fmt.Println("Sending to local elevator.")
 					g_elevator.m_requests = MergeRequests(g_elevator.m_requests, order[0])
-					TriggerFirstRequest(order[0], g_elevator.toElevator)
+					TriggerFirstRequest(order[0], g_elevator.toElevator, localOtherRequest)
 					//g_elevator.toElevator(GetFloor(order[0][0]), elevio.ButtonType(GetButtonType(order[0][0])))
 
 				} else {
@@ -128,7 +128,7 @@ func main() {
 				}
 				// -------------------------------------------------------------------------------------------------------------
 			case a := <-drv_buttons:
-				g_elevator.handleButtonPress(a.Floor, a.Button, true)
+				g_elevator.handleButtonPress(a.Floor, a.Button, true, localOtherRequest)
 
 				ELS[0] = g_elevator
 				ELS[0].m_requests = storedElevator.m_requests
@@ -171,8 +171,8 @@ func main() {
 				}
 
 			case a := <-drv_buttons:
-				g_elevator.handleButtonPress(a.Floor, a.Button, ActiveConnection) // Also need paramter for connection. Necessary to differ between button-light contract and standalone
-
+				g_elevator.handleButtonPress(a.Floor, a.Button, ActiveConnection, localOtherRequest) // Also need paramter for connection. Necessary to differ between button-light contract and standalone
+				// localotherrequest Placeholder for request from master. all false will not affect.
 			case a := <-drv_floors:
 				g_elevator.handleFloorArrival(a, localOtherRequest)
 

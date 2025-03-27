@@ -260,11 +260,11 @@ func DecodeStringToMatrix(s string) [4][3]bool {
 	return matrix
 }
 
-func TriggerFirstRequest(matrix [4][3]bool, sendFunc func(floor int, btn elevio.ButtonType)) {
+func TriggerFirstRequest(matrix [4][3]bool, sendFunc func(floor int, btn elevio.ButtonType, otherRequest [4][3]bool), otherRequest [4][3]bool) {
 	for floor := 0; floor < 4; floor++ {
 		for btn := 0; btn < 2; btn++ { // only hall up (0) and down (1)
 			if matrix[floor][btn] {
-				sendFunc(floor, elevio.ButtonType(btn))
+				sendFunc(floor, elevio.ButtonType(btn), otherRequest)
 				return
 			}
 		}
