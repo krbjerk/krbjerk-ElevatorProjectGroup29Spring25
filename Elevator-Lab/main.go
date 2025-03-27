@@ -17,7 +17,7 @@ func main() {
 		m_peers:    []string{},
 	}
 
-	var Master bool = false
+	var Master bool = true
 
 	var ELS []Elevator = make([]Elevator, 3)
 	var storedELS []Elevator = make([]Elevator, 3)
@@ -53,11 +53,12 @@ func main() {
 			select {
 			case a := <-Read:
 				// -------------------------------------------------------------------------------------------------------------
-				slaveID := int(a[16] - '0') // Adjust this as needed
+				slaveID := int(a[24] - '0') // Adjust this as needed
+				fmt.Println(a[:24])
 				ELS[0] = g_elevator
 				ELS[0].m_requests = storedElevator.m_requests
-				ELS[slaveID] = DecodeElevatorFromString(a)
-				//ELS[slaveID].printElevatorState()
+				ELS[slaveID] = DecodeElevatorFromString(a[:24])
+				ELS[slaveID].printElevatorState()
 				// ------
 				// if new ELS != storedELS
 				// 		then remove the overlapping requests from new ELS
@@ -78,6 +79,7 @@ func main() {
 				// ------
 				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
 				fmt.Println("0")
+				//fmt.Println(order)
 				slaveMapMutex.Lock()
 				ch, ok := slaveOrderChans[int32(slaveID)]
 				slaveMapMutex.Unlock()

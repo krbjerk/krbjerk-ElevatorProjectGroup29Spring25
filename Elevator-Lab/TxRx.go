@@ -294,7 +294,9 @@ func ReadFromSlave(receiver chan<- string) {
 
 		go HandleConnections(conn, receive, id, orderChan, host)
 		go func(slaveID int32) {
+
 			for data := range receive {
+				//encoded := fmt.Sprintf("%08b%08b%08b", data[0], data[1], data[2])
 				receiver <- data + strconv.Itoa(int(slaveID))
 			}
 		}(id)
