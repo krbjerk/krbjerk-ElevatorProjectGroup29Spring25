@@ -17,7 +17,7 @@ import (
 
 const _pollRate = 20 * time.Millisecond
 
-var slaveOrderChans = make(map[int32]chan [3][4][3]bool)
+var slaveOrderChans = make(map[int32]chan [][4][3]bool)
 
 var _initialized bool = false
 var _numFloors int = 4
@@ -61,6 +61,7 @@ func TakeRequest(EL Elevator, request string) {
 	}
 }
 
+/*
 func MakeRequest(ELS []Elevator) [3][4][3]bool {
 	var EL_requests = [][]int{
 		make([]int, numFloors*2),
@@ -136,6 +137,115 @@ func MakeRequest(ELS []Elevator) [3][4][3]bool {
 				result[elIndex][floor][btnType] = true
 			}
 			// do NOT touch cab buttons (index 2)
+		}
+	}
+
+	return result
+}
+
+*/
+
+// MakeRequest dynamically assigns hall requests among all connected elevators.
+func MakeRequest(ELS []Elevator) [][NUM_FLOORS][3]bool {
+	n := len(ELS)
+	if n == 0 {
+		// No elevators
+		return nil
+	}
+
+	// cost array: EL_requests[i][0..7] for each elevator i (if numFloors=4 => 4 floors×2 btn=8)
+	EL_requests := make([][]int, n)
+	for i := 0; i < n; i++ {
+		EL_requests[i] = make([]int, numFloors*2)
+	}
+
+	// Track final assigned requests per elevator
+	Finished_EL_requests := make([][]int, n)
+
+	Time_Between_floors := 5
+
+	// 1) Build cost matrix
+	for i := 0; i < n; i++ { // the elevator we might assign to
+		for j := 0; j < n; j++ { // the elevator that *has* requests
+			for floor := 0; floor < numFloors; floor++ {
+				// up request?
+				if ELS[j].m_requests[floor][0] {
+					cost := int(math.Abs(float64(ELS[i].m_floor)-float64(floor))) * Time_Between_floors
+					// cast dirn/behavior to int
+					cost += 2 * int(ELS[i].m_dirn) * -int(math.Pow(float64(ELS[i].m_floor-floor), 0))
+					cost += int(ELS[i].m_behavior)
+					EL_requests[i][floor*2] = cost
+				}
+				// down request?
+				if ELS[j].m_requests[floor][1] {
+					cost := int(math.Abs(float64(ELS[i].m_floor)-float64(floor))) * Time_Between_floors
+					cost -= 2 * int(ELS[i].m_dirn) * -int(math.Pow(float64(ELS[i].m_floor-floor), 0))
+					cost += int(ELS[i].m_behavior)
+					EL_requests[i][floor*2+1] = cost
+				}
+			}
+		}
+	}
+
+	// 2) Repeatedly pick lowest cost request
+	for {
+		lowest := 100
+		chosenElevator := -1
+		chosenRequest := -1
+
+		// Find absolute lowest cost across all
+		for i := 0; i < n; i++ {
+			for r := 0; r < numFloors*2; r++ {
+				c := EL_requests[i][r]
+				if c != 0 && c < lowest {
+					lowest = c
+					chosenElevator = i
+					chosenRequest = r
+				}
+			}
+		}
+
+		if lowest == 100 || chosenElevator < 0 {
+			break // no more requests
+		}
+
+		// assign it
+		Finished_EL_requests[chosenElevator] = append(
+			Finished_EL_requests[chosenElevator], chosenRequest,
+		)
+
+		// clear that request from all elevators
+		for i := 0; i < n; i++ {
+			EL_requests[i][chosenRequest] = 0
+		}
+
+		// Increase cost of remaining requests for chosen elevator
+		for r := 0; r < numFloors*2; r++ {
+			if EL_requests[chosenElevator][r] != 0 {
+				EL_requests[chosenElevator][r] += 3
+				// If the assigned was "up" (even index)
+				if chosenRequest%2 == 0 && r > chosenRequest {
+					EL_requests[chosenElevator][r] -= 5
+				}
+				// If the assigned was "down" (odd index)
+				if chosenRequest%2 == 1 && r < chosenRequest {
+					EL_requests[chosenElevator][r] -= 5
+				}
+			}
+		}
+	}
+
+	// 3) Convert to a slice of [numFloors][3]bool
+	result := make([][NUM_FLOORS][3]bool, n)
+
+	for elIndex, assigned := range Finished_EL_requests {
+		for _, flatFloor := range assigned {
+			floor := flatFloor / 2
+			btnType := flatFloor % 2 // 0=up, 1=down
+			// skip out-of-bounds / cabin index2
+			if floor >= 0 && floor < numFloors && (btnType == 0 || btnType == 1) {
+				result[elIndex][floor][btnType] = true
+			}
 		}
 	}
 
@@ -313,7 +423,7 @@ func ReadFromSlave(receiver chan<- string) {
 		fmt.Printf("Slave %d connected from %s!\n", id, host)
 
 		receive := make(chan string, 10)
-		orderChan := make(chan [3][4][3]bool, 10)
+		orderChan := make(chan [][4][3]bool, 10)
 
 		// Associate the order channel with the slave ID
 		slaveMapMutex.Lock()
@@ -333,7 +443,7 @@ func ReadFromSlave(receiver chan<- string) {
 
 // HandleConnections reads data from the connection, processes it,
 // waits for an order, and sends a response back.
-func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, orderChan <-chan [3][4][3]bool, host string) {
+func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, orderChan <-chan [][4][3]bool, host string) {
 	defer conn.Close()
 	buffer := make([]byte, 1024)
 	for {
