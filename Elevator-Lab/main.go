@@ -9,34 +9,19 @@ import (
 
 func main() {
 
-	init_elevator := Elevator{
-		m_id:       0,
-		m_floor:    0,
-		m_dirn:     0,
-		m_behavior: 0,
-		m_requests: [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}},
-		m_peers:    []string{},
-	}
+	g_elevator := init_elevator()
 
-	g_elevator := init_elevator
 	var localOtherRequest [4][3]bool = [4][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}} // TODO: Musyt define it at start. can be all false
 
 	var ELS ElevatorList = make([]Elevator, 1)
 	var storedELS []Elevator = make([]Elevator, 1)
-	/*for i := range ELS {
-		ELS[i].m_requests = [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}}
-		storedELS[i].m_requests = [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}}
-	}*/
 
 	masterTimer := rand.Intn(1500) + 300
 	MasterCheck(masterTimer, &ELS, &storedElevator) // Pass by reference and synchronize storedElevator being sent
 
 	elevio.Init("localhost:15657", NUM_FLOORS)
 
-	if elevio.GetFloor() == -1 {
-		// Make the elevator move to an actual floor on startup. Necessary for the state machine.
-		g_elevator.initElevator()
-	}
+	g_elevator.initElevator()
 
 	drv_buttons := make(chan elevio.ButtonEvent)
 	drv_floors := make(chan int)
@@ -63,9 +48,9 @@ func main() {
 				ELS[0].m_requests = storedElevator.m_requests
 				// REMEMBER TO FIX SYNCHRONIZATION OF ELS, DEEM IF NECESSARY.
 
-				if len(ELS) < slaveID+1 { // Will this introduce problems with slave disconnect?
-					ELS = append(ELS, init_elevator)
-					storedELS = append(storedELS, init_elevator)
+				if len(ELS) < slaveID+1 {
+					ELS = append(ELS, init_elevator())
+					storedELS = append(storedELS, init_elevator())
 					fmt.Println("New elevator")
 				}
 				ELS[slaveID] = DecodeElevatorFromString(a[:24])
@@ -74,30 +59,10 @@ func main() {
 				ELS[0].printElevatorState()
 				fmt.Println("Elevator:", slaveID)
 				ELS[slaveID].printElevatorState()
-				// ------
-				// if new ELS != storedELS
-				// 		then remove the overlapping requests from new ELS
-				//		storedELS = new ELSz
-				/*for k := 0; k < len(ELS); k++ {
-					//fmt.Println("orders, elevator number: ", k)
-					//fmt.Println(ELS[k].m_requests)
-					for i := 0; i < NUM_FLOORS; i++ {
-						for j := 0; j < 3; j++ {
-							if ELS[k].m_requests[i][j] && storedELS[k].m_requests[i][j] {
-								ELS[k].m_requests[i][j] = false
-								//storedELS[k].m_requests[i][j] = false // Assuming storedElevator.m_requests belongs to _e
-							} else {
-								storedELS[k].m_requests[i][j] = ELS[k].m_requests[i][j]
-							}
-						}
-					}
 
-				}*/
-				// ------
 				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
 				fmt.Println("Order made:")
 				fmt.Println(order)
-				//fmt.Println(order)
 
 				for i := 0; i < NUM_FLOORS; i++ {
 					for j := 0; j < 3; j++ {
@@ -114,8 +79,7 @@ func main() {
 				if ok {
 					select {
 					case ch <- order: // ACTUALLY SEND TO SLAVE
-						//fmt.Println("In select, ch<-order", order)
-						// We could change the elevators here so that it drops the request.
+
 					default:
 						fmt.Printf("Slave %d's order channel is full; skipping update.\n", slaveID)
 					}
@@ -133,17 +97,20 @@ func main() {
 				// -------------------------------------------------------------------------------------------------------------
 			case a := <-drv_buttons:
 				g_elevator.handleButtonPress(a.Floor, a.Button, true, localOtherRequest)
+
 				fmt.Println("StoredElevator")
 				fmt.Println(storedElevator.m_requests)
 
 				ELS[0] = g_elevator
 				ELS[0].m_requests = storedElevator.m_requests //
 				order := MakeRequest(ELS)
-				// ORDER
+
 				fmt.Println("Order made after button press")
 				fmt.Println(order)
+
 				localOtherRequests := order[1:]
 				localOtherRequest = MergeRequestsSlice(localOtherRequests)
+
 				if len(order) > 0 {
 					fmt.Println("time to verify.")
 					g_elevator.verifyRequest(true, order[0], localOtherRequest)
@@ -198,11 +165,11 @@ func main() {
 					g_elevator.handleDoorTimeout(localOtherRequest)
 				}
 			}
+
 			temp_requests := storedElevator.m_requests
 			temp_elevator := g_elevator
 			temp_elevator.m_requests = temp_requests
 			storedElevator = temp_elevator
-
 		}
 	}
 }

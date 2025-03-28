@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"root/elevio"
 )
 
@@ -149,9 +150,115 @@ func (_e *Elevator) clearRequestsAtCurrentFloor() {
 	}
 }
 
+// MakeRequest dynamically assigns hall requests among all connected elevators.
+func MakeRequest(ELS []Elevator) [][NUM_FLOORS][3]bool {
+	n := len(ELS)
+	if n == 0 {
+		// No elevators
+		return nil
+	}
+
+	// cost array: EL_requests[i][0..7] for each elevator i (ifNUM_FLOORS=4 => 4 floors×2 btn=8)
+	EL_requests := make([][]int, n)
+	for i := 0; i < n; i++ {
+		EL_requests[i] = make([]int, NUM_FLOORS*2)
+	}
+
+	// Track final assigned requests per elevator
+	Finished_EL_requests := make([][]int, n)
+
+	Time_Between_floors := 5
+
+	// 1) Build cost matrix
+	for i := 0; i < n; i++ { // the elevator we might assign to
+		for j := 0; j < n; j++ { // the elevator that *has* requests
+			for floor := 0; floor < NUM_FLOORS; floor++ {
+				// up request?
+				if ELS[j].m_requests[floor][0] {
+					cost := int(math.Abs(float64(ELS[i].m_floor)-float64(floor))) * Time_Between_floors
+					// cast dirn/behavior to int
+					cost += 2 * int(ELS[i].m_dirn) * -int(math.Pow(float64(ELS[i].m_floor-floor), 0))
+					cost += int(ELS[i].m_behavior)
+					EL_requests[i][floor*2] = cost
+				}
+				// down request?
+				if ELS[j].m_requests[floor][1] {
+					cost := int(math.Abs(float64(ELS[i].m_floor)-float64(floor))) * Time_Between_floors
+					cost -= 2 * int(ELS[i].m_dirn) * -int(math.Pow(float64(ELS[i].m_floor-floor), 0))
+					cost += int(ELS[i].m_behavior)
+					EL_requests[i][floor*2+1] = cost
+				}
+			}
+		}
+	}
+
+	// 2) Repeatedly pick lowest cost request
+	for {
+		lowest := 100
+		chosenElevator := -1
+		chosenRequest := -1
+
+		// Find absolute lowest cost across all
+		for i := 0; i < n; i++ {
+			for r := 0; r < NUM_FLOORS*2; r++ {
+				c := EL_requests[i][r]
+				if c != 0 && c < lowest {
+					lowest = c
+					chosenElevator = i
+					chosenRequest = r
+				}
+			}
+		}
+
+		if lowest == 100 || chosenElevator < 0 {
+			break // no more requests
+		}
+
+		// assign it
+		Finished_EL_requests[chosenElevator] = append(
+			Finished_EL_requests[chosenElevator], chosenRequest,
+		)
+
+		// clear that request from all elevators
+		for i := 0; i < n; i++ {
+			EL_requests[i][chosenRequest] = 0
+		}
+
+		// Increase cost of remaining requests for chosen elevator
+		for r := 0; r < NUM_FLOORS*2; r++ {
+			if EL_requests[chosenElevator][r] != 0 {
+				EL_requests[chosenElevator][r] += 3
+				// If the assigned was "up" (even index)
+				if chosenRequest%2 == 0 && r > chosenRequest {
+					EL_requests[chosenElevator][r] -= 5
+				}
+				// If the assigned was "down" (odd index)
+				if chosenRequest%2 == 1 && r < chosenRequest {
+					EL_requests[chosenElevator][r] -= 5
+				}
+			}
+		}
+	}
+
+	// 3) Convert to a slice of [numFloors][3]bool
+	result := make([][NUM_FLOORS][3]bool, n)
+
+	for elIndex, assigned := range Finished_EL_requests {
+		for _, flatFloor := range assigned {
+			floor := flatFloor / 2
+			btnType := flatFloor % 2 // 0=up, 1=down
+			// skip out-of-bounds / cabin index2
+			if floor >= 0 && floor < NUM_FLOORS && (btnType == 0 || btnType == 1) {
+				result[elIndex][floor][btnType] = true
+			}
+		}
+	}
+
+	return result
+}
+
 func (_e *Elevator) verifyRequest(master bool, _requestsFromMaster [4][3]bool, otherRequest [4][3]bool) {
 	// Declare startFloor and startButton outside the loop so they persist
-	//fmt.Println("response from master", _requestsFromMaster)
 	startFloor := -1
 	startButton := -1
 
@@ -187,8 +294,15 @@ func setStoredRequests(_btnFloor int, _btnType elevio.ButtonType) {
 	storedElevator.m_requests[_btnFloor][_btnType] = true
 }
 
-func MakeRequestFromMaster([][]int) {
-
+func TriggerFirstRequest(matrix [4][3]bool, sendFunc func(floor int, btn elevio.ButtonType, otherRequest [4][3]bool), otherRequest [4][3]bool) {
+	for floor := 0; floor < 4; floor++ {
+		for btn := 0; btn < 2; btn++ { // only hall up (0) and down (1)
+			if matrix[floor][btn] {
+				sendFunc(floor, elevio.ButtonType(btn), otherRequest)
+				return
+			}
+		}
+	}
 }
 
 func ConvertToElevatorRequests(request int) [4][3]bool {
@@ -228,18 +342,6 @@ func MergeRequests(req1, req2 [4][3]bool) [4][3]bool {
 	return merged
 }
 
-// GetFloor extracts the floor number from an order
-func GetFloor(order int) int {
-	return order / 2
-}
-
-// GetButtonType extracts the button type (B_HallUp, B_HallDown, B_Cab) from an order
-func GetButtonType(order int) Button {
-	return Button(order % 2) // Convert remainder to Button type
-}
-
-// ----- NEW ERA -----
-
 func EncodeMatrixToString(matrix [4][3]bool) string {
 	var result string
 	for i := 0; i < 4; i++ {
@@ -268,17 +370,6 @@ func DecodeStringToMatrix(s string) [4][3]bool {
 		}
 	}
 	return matrix
-}
-
-func TriggerFirstRequest(matrix [4][3]bool, sendFunc func(floor int, btn elevio.ButtonType, otherRequest [4][3]bool), otherRequest [4][3]bool) {
-	for floor := 0; floor < 4; floor++ {
-		for btn := 0; btn < 2; btn++ { // only hall up (0) and down (1)
-			if matrix[floor][btn] {
-				sendFunc(floor, elevio.ButtonType(btn), otherRequest)
-				return
-			}
-		}
-	}
 }
 
 func MergeRequestsSlice(requests [][4][3]bool) [4][3]bool {

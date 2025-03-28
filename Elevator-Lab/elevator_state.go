@@ -36,16 +36,6 @@ const (
 	EB_Moving                    = 2
 )
 
-type Direction int
-
-// TODO:
-// Not used in code for now. Make decision about it being removed or change from MD.
-const (
-	D_Down Direction = -1
-	D_Stop           = 0
-	D_Up             = 1
-)
-
 type Button int
 
 const (
@@ -54,19 +44,39 @@ const (
 	B_Cab             = 2
 )
 
+type ButtonEvent struct {
+	Floor  int
+	Button Button
+}
+
 // Global elevator instance
 var g_elevator Elevator
 
-// Initialize the elevator
-func (_e *Elevator) initElevator() {
-	elevio.SetMotorDirection(elevio.MD_Down)
-	_e.m_dirn = elevio.MD_Down
-	_e.m_behavior = EB_Moving
-	_e.m_obstruction = false
-	_e.config.clearRequestVariant = CV_InDirn
+func init_elevator() Elevator {
+
+	return Elevator{
+		m_id:       0,
+		m_floor:    0,
+		m_dirn:     0,
+		m_behavior: 0,
+		m_requests: [NUM_FLOORS][3]bool{{false, false, false}, {false, false, false}, {false, false, false}, {false, false, false}},
+	}
 }
 
-// Handle a button press	TODO: PROBLEMSS
+// Initialize the elevator
+func (_e *Elevator) initElevator() {
+	if elevio.GetFloor() == -1 {
+		// Make the elevator move to an actual floor on startup. Necessary for the state machine.
+
+		elevio.SetMotorDirection(elevio.MD_Down)
+		_e.m_dirn = elevio.MD_Down
+		_e.m_behavior = EB_Moving
+		_e.m_obstruction = false
+		_e.config.clearRequestVariant = CV_InDirn
+	}
+}
+
+// Handle a button press
 func (_e *Elevator) handleButtonPress(_btnFloor int, _btnType elevio.ButtonType, _connection bool, otherRequest [4][3]bool) {
 	fmt.Println("-----------------")
 	fmt.Println("Button press")
@@ -176,16 +186,6 @@ func (_e *Elevator) processRequest(otherRequest [4][3]bool) {
 	}
 }
 
-// Update elevator lights
-/*func (_e Elevator) updateLights() {
-	var BTNS = []elevio.ButtonType{elevio.BT_HallUp, elevio.BT_HallDown, elevio.BT_Cab}
-	for _floor := 0; _floor < NUM_FLOORS; _floor++ {
-		for _, _btn := range BTNS {
-			elevio.SetButtonLamp(_btn, _floor, _e.m_requests[_floor][_btn])
-		}
-	}
-}*/
-
 func (_e Elevator) updateLights(otherElevators [4][3]bool) {
 	var BTNS = []elevio.ButtonType{elevio.BT_HallUp, elevio.BT_HallDown, elevio.BT_Cab}
 	for _floor := 0; _floor < NUM_FLOORS; _floor++ {
@@ -194,6 +194,17 @@ func (_e Elevator) updateLights(otherElevators [4][3]bool) {
 			elevio.SetButtonLamp(_btn, _floor, shouldLight)
 		}
 	}
+}
+
+func (_e *Elevator) setObstruction(value bool) {
+	_e.m_obstruction = value
+	if _e.m_obstruction && _e.m_behavior == EB_Idle {
+		_e.m_behavior = EB_DoorOpen
+		elevio.SetDoorOpenLamp(true)
+		g_timer.startTimer(DOOR_OPEN_DURATION)
+
+	}
+
 }
 
 // Convert direction to string
@@ -254,15 +265,4 @@ func (_e *Elevator) printElevatorState() {
 		fmt.Println("|")
 	}
 	fmt.Println("  +--------------------+")
-}
-
-func (_e *Elevator) setObstruction(value bool) {
-	_e.m_obstruction = value
-	if _e.m_obstruction && _e.m_behavior == EB_Idle {
-		_e.m_behavior = EB_DoorOpen
-		elevio.SetDoorOpenLamp(true)
-		g_timer.startTimer(DOOR_OPEN_DURATION)
-
-	}
-
 }
