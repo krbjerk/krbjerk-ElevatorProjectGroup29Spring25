@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"root/elevator"
 	"root/elevio"
+	"root/timer"
 	"time"
 )
 
@@ -127,7 +128,7 @@ func main() {
 			case <-drv_stop:
 
 			case <-timeoutTicker.C:
-				if g_timer.timedOut() {
+				if timer.TimedOut() {
 					g_elevator.HandleDoorTimeout(localOtherRequest)
 				}
 			}
@@ -161,7 +162,7 @@ func main() {
 			case <-drv_stop:
 
 			case <-timeoutTicker.C:
-				if g_timer.timedOut() {
+				if timer.TimedOut() {
 					g_elevator.HandleDoorTimeout(localOtherRequest)
 				}
 			}

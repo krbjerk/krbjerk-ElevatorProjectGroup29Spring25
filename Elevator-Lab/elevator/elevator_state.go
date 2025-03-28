@@ -3,6 +3,7 @@ package elevator
 import (
 	"fmt"
 	"root/elevio"
+	"root/timer"
 )
 
 const DOOR_OPEN_DURATION = 3.0
@@ -104,11 +105,11 @@ func (_e *Elevator) ToElevator(_btnFloor int, _btnType elevio.ButtonType, otherR
 	case EB_DoorOpen:
 		//fmt.Println("Door is open.")
 		if _e.m_floor == _btnFloor {
-			g_timer.startTimer(DOOR_OPEN_DURATION)
+			timer.Start(DOOR_OPEN_DURATION)
 			//fmt.Println("door timeout 1")
 		} else {
 			_e.m_requests[_btnFloor][_btnType] = true
-			if checkTimerExpired(g_timer) {
+			if timer.IsExpired() {
 				_e.ProcessRequest(otherRequest)
 				//fmt.Println("Acted on request.")
 			}
@@ -118,7 +119,7 @@ func (_e *Elevator) ToElevator(_btnFloor int, _btnType elevio.ButtonType, otherR
 		_e.m_requests[_btnFloor][_btnType] = true
 	case EB_Idle:
 		_e.m_requests[_btnFloor][_btnType] = true
-		if checkTimerExpired(g_timer) {
+		if timer.IsExpired() {
 			_e.ProcessRequest(otherRequest)
 			//fmt.Println("Acted on request.")
 		}
@@ -138,7 +139,7 @@ func (_e *Elevator) HandleFloorArrival(_newFloor int, otherRequest [4][3]bool) {
 		elevio.SetMotorDirection(elevio.MD_Stop)
 		elevio.SetDoorOpenLamp(true)
 		_e.clearRequestsAtCurrentFloor()
-		g_timer.startTimer(DOOR_OPEN_DURATION)
+		timer.Start(DOOR_OPEN_DURATION)
 		_e.UpdateLights(otherRequest)
 		_e.m_behavior = EB_DoorOpen
 		_e.m_dirn = elevio.MD_Stop
@@ -150,7 +151,7 @@ func (_e *Elevator) HandleFloorArrival(_newFloor int, otherRequest [4][3]bool) {
 func (_e *Elevator) HandleDoorTimeout(otherRequest [4][3]bool) {
 	//fmt.Println("Door timeout, checking requests.")
 	if _e.m_obstruction {
-		g_timer.startTimer(DOOR_OPEN_DURATION)
+		timer.Start(DOOR_OPEN_DURATION)
 	} else if _e.m_behavior == EB_DoorOpen {
 		twin := _e.determineDirection()
 		_e.m_dirn = twin.m_dirn
@@ -158,7 +159,7 @@ func (_e *Elevator) HandleDoorTimeout(otherRequest [4][3]bool) {
 
 		switch _e.m_behavior {
 		case EB_DoorOpen:
-			g_timer.startTimer(DOOR_OPEN_DURATION)
+			timer.Start(DOOR_OPEN_DURATION)
 			_e.clearRequestsAtCurrentFloor()
 			_e.UpdateLights(otherRequest)
 		case EB_Moving:
@@ -205,7 +206,7 @@ func (_e *Elevator) SetObstruction(value bool) {
 	if _e.m_obstruction && _e.m_behavior == EB_Idle {
 		_e.m_behavior = EB_DoorOpen
 		elevio.SetDoorOpenLamp(true)
-		g_timer.startTimer(DOOR_OPEN_DURATION)
+		timer.Start(DOOR_OPEN_DURATION)
 
 	}
 
