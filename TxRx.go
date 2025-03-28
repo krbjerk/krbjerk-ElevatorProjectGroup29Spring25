@@ -20,7 +20,7 @@ const _pollRate = 20 * time.Millisecond
 
 var slaveOrderChans = make(map[int32]chan [][4][3]bool)
 
-var ipList = []string{"10.100.23.33", "10.22.113.211"}
+var ipList = []string{"10.22.123.211", "10.100.23.33", "10.22.169.77"}
 var MasterIndex int
 
 var Read = make(chan string, 10)
@@ -36,6 +36,8 @@ var ActiveConnection bool = false
 var FloorTimer = 2
 var numFloors = 4
 var Master bool
+
+var packetLoss = 20
 
 // For sending between elevators
 var ipToID = make(map[string]int)
@@ -564,12 +566,14 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 		case <-time.After(100 * time.Millisecond):
 			log.Printf("No master order available for slave %d, sending default response.\n", id)
 		}
-
-		_, err = conn.Write([]byte(response2))
-		if err != nil {
-			log.Printf("Failed to send response to Slave", err)
+		if rand.Intn(100) < 20 {
+			_, err = conn.Write([]byte(response2))
+			if err != nil {
+				log.Printf("Failed to send response to Slave", err)
+			}
+		} else {
+			fmt.Println("Packet loss oh no :o")
 		}
-
 	}
 }
 
@@ -584,41 +588,55 @@ func (EL *Elevator) SendToMaster(receiver chan<- string, _ELS *ElevatorList) {
 
 	fmt.Println("Connected to Master!")
 
+	failureCount := 0
+	maxFailures := 100                     // Number of consecutive failures before triggering MasterCheck
+	failureTimeout := 1 * time.Millisecond // Time window to count failures
+	lastFailureTime := time.Now()
+
 	for {
-		//EL.printElevatorState()
-		//var package1 uint8 = uint8(BoolToInt(EL.m_requests[0][2])&0b1 | BoolToInt(EL.m_requests[0][0])&0b1<<1 | int(EL.m_behavior)&0b11<<2 | int(EL.m_dirn+1)&0b11<<4 | int(EL.m_floor)&0b11<<6)
-		//var package2 uint8 = uint8(BoolToInt(EL.m_requests[3][2])&0b1 | BoolToInt(EL.m_requests[3][0])&0b1<<1 | BoolToInt(EL.m_requests[2][2])&0b1<<2 | BoolToInt(EL.m_requests[2][1])&0b1<<3 | BoolToInt(EL.m_requests[2][0])&0b1<<4 | BoolToInt(EL.m_requests[1][2])&0b1<<5 | BoolToInt(EL.m_requests[1][1])&0b1<<6 | BoolToInt(EL.m_requests[1][0])&0b1<<7)
 		EL.printElevatorState()
 		packet := EncodeElevator(EL)
-		_, err := conn.Write(packet[:])
-		if err != nil {
-			log.Println("Failed to send data:", err)
-			return
-		}
-		fmt.Println("Sent to Master:", packet)
-		//TROUBLESHOOTING:
-		testbuf := packet
-		testbitstring := ""
-		for _, testb := range testbuf {
-			testbitstring += fmt.Sprintf("%08b", testb)
-		}
-		fmt.Println(testbitstring)
 
-		// Read response from Master
+		if rand.Intn(100) < packetLoss {
+			_, err := conn.Write(packet[:])
+			if err != nil {
+				log.Println("Failed to send data:", err)
+				return
+			}
+		} else {
+			fmt.Println("Packet loss oh no :o")
+		}
+
+		fmt.Println("Sent to Master:", packet)
+
 		buffer := make([]byte, 1024)
 		conn.SetReadDeadline(time.Now().Add(2 * time.Second)) // Prevent infinite blocking
 		n, err := conn.Read(buffer)
 
 		if err != nil {
 			fmt.Println("Failed to read response:", err)
-			MasterCheck(rand.Intn(1500)+1500, _ELS, EL) // TODO: change to pass py reference
-			ActiveConnection = false                    // look at removing use of activeconnection
-			return
-		}
-		receiver <- string(buffer[:n])
-		ActiveConnection = true
 
-		time.Sleep(1 * time.Second)
+			// Increment failure count and check timeout window
+			if time.Since(lastFailureTime) > failureTimeout {
+				failureCount = 0 // Reset failure count if timeout window passed
+			}
+			failureCount++
+			lastFailureTime = time.Now()
+
+			if failureCount >= maxFailures {
+				fmt.Println("Connection issue persists, triggering MasterCheck.")
+				MasterCheck(rand.Intn(3000)+1500, _ELS, EL)
+				ActiveConnection = false
+				return
+			}
+		} else {
+			// Reset failure count on successful read
+			failureCount = 0
+			receiver <- string(buffer[:n])
+			ActiveConnection = true
+		}
+
+		time.Sleep(1 * time.Millisecond)
 	}
 }
 

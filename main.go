@@ -10,7 +10,6 @@ import (
 
 func main() {
 
-	
 
 	var SimServerPort = "localhost:12345"
 	if len(os.Args) > 1 {
