@@ -27,6 +27,9 @@ var (
 	SlaveMap      = make(map[string]int32)
 	SlaveMapMutex sync.Mutex
 	IDCounter     int32
+
+	ipList      = []string{"10.22.113.144", "10.22.123.211", "10.22.123.33"}
+	MasterIndex int
 )
 
 // MasterCheck tries to find a running master (via KCP). If none found, become master.
@@ -38,23 +41,24 @@ func MasterCheck(masterTimer int, _ELS *elevator.ElevatorList, _EL *elevator.Ele
 
 	for {
 		// Attempt to connect to a master on port 4001
-		conn, err := kcp.DialWithOptions("10.22.169.77:4001", nil, 10, 3) // example IP
-		if err == nil {
-			conn.SetDeadline(time.Now().Add(100 * time.Millisecond))
-			_, err = conn.Write([]byte("ping"))
+		for i := range ipList {
+			conn, err := kcp.DialWithOptions(ipList[i]+":4001", nil, 10, 3) // example IP
 			if err == nil {
-				// Wait for "ack" response
-				buffer := make([]byte, 1024)
-				n, err := conn.Read(buffer)
-				if err == nil && string(buffer[:n]) == "ack" {
-					fmt.Println("Master found! Running SendToMaster.")
-					Master = false
-					go SendToMaster(_EL, Send, _ELS)
-					conn.Close()
-					return
+				conn.SetDeadline(time.Now().Add(100 * time.Millisecond))
+				_, err = conn.Write([]byte("ping"))
+				if err == nil {
+					// Wait for "ack" response
+					buffer := make([]byte, 1024)
+					n, err := conn.Read(buffer)
+					if err == nil && string(buffer[:n]) == "ack" {
+						fmt.Println("Master found! Running SendToMaster.")
+						Master = false
+						go SendToMaster(_EL, Send, _ELS)
+						return
+					}
 				}
+				conn.Close()
 			}
-			conn.Close()
 		}
 		if time.Now().After(deadline) {
 			fmt.Println("No master found. Becoming master.")
@@ -130,13 +134,13 @@ func ReadFromSlave(_ELS *elevator.ElevatorList, receiver chan<- string) {
 			id = atomic.AddInt32(&IDCounter, 1)
 			SlaveMap[host] = id
 		} else {
-			// If we already know this ID, send back a status update
+			/*// If we already know this ID, send back a status update
 			var update uint8 = uint8(
 				BoolToInt(elevator.GetIndRequest((*_ELS)[id], 3, 2))&0b1 |
 					BoolToInt(elevator.GetIndRequest((*_ELS)[id], 2, 2))&0b1<<1 |
 					BoolToInt(elevator.GetIndRequest((*_ELS)[id], 1, 2))&0b1<<2 |
 					BoolToInt(elevator.GetIndRequest((*_ELS)[id], 0, 2))&0b1<<3)
-			_, err = conn.Write([]byte{update})
+			_, err = conn.Write([]byte{update})*/
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -223,7 +227,7 @@ func SendToMaster(
 	receiver chan<- string,
 	_ELS *elevator.ElevatorList,
 ) {
-	conn, err := kcp.DialWithOptions("10.22.169.77:4000", nil, 10, 3)
+	conn, err := kcp.DialWithOptions(ipList[MasterIndex]+":4000", nil, 10, 3)
 	if err != nil {
 		log.Fatalf("Failed to connect to master: %v", err)
 	}
@@ -254,7 +258,7 @@ func SendToMaster(
 		n, err := conn.Read(buffer)
 		if err != nil {
 			fmt.Println("Failed to read response:", err)
-			MasterCheck(rand.Intn(1500)+300, _ELS, EL)
+			MasterCheck(rand.Intn(3000)+1500, _ELS, EL)
 			ActiveConnection = false
 			return
 		}
