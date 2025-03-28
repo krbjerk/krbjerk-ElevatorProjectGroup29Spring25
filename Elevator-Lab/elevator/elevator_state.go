@@ -151,7 +151,6 @@ func (_e *Elevator) HandleFloorArrival(_newFloor int, otherRequest [4][3]bool) {
 
 // Handle door timeout event
 func (_e *Elevator) HandleDoorTimeout(otherRequest [4][3]bool) {
-	//fmt.Println("Door timeout, checking requests.")
 	if _e.m_obstruction {
 		timer.Start(DOOR_OPEN_DURATION)
 	} else if _e.m_behavior == EB_DoorOpen {

@@ -30,6 +30,8 @@ var (
 
 	ipList      = []string{"10.22.113.144", "10.22.123.211", "10.22.123.33"}
 	MasterIndex int
+
+	packetLoss = 20
 )
 
 // MasterCheck tries to find a running master (via KCP). If none found, become master.
@@ -193,7 +195,6 @@ func HandleConnections(
 			data += fmt.Sprintf("%08b", b)
 		}
 		receive <- data
-		fmt.Println("Data Received", data)
 
 		// Default response
 		response := "n"
@@ -214,7 +215,14 @@ func HandleConnections(
 			log.Printf("No master order available for slave %d, sending default response.\n", id)
 		}
 
-		_, err = conn.Write([]byte(response2))
+		if rand.Intn(100) < 20 {
+			_, err = conn.Write([]byte(response2))
+			if err != nil {
+				log.Printf("Failed to send response to Slave", err)
+			}
+		} else {
+			fmt.Println("Packet loss oh no :o")
+		}
 		if err != nil {
 			log.Printf("Failed to send response to Slave: %v", err)
 		}
@@ -235,32 +243,52 @@ func SendToMaster(
 
 	fmt.Println("Connected to Master!")
 
+	failureCount := 0
+	maxFailures := 100                     // Number of consecutive failures before triggering MasterCheck
+	failureTimeout := 1 * time.Millisecond // Time window to count failures
+	lastFailureTime := time.Now()
+
 	for {
 		EL.PrintElevatorState()
 		packet := EncodeElevator(EL)
-		_, err := conn.Write(packet[:])
-		if err != nil {
-			log.Println("Failed to send data:", err)
-			return
+
+		if rand.Intn(100) > packetLoss {
+			_, err := conn.Write(packet[:])
+			if err != nil {
+				log.Println("Failed to send data:", err)
+				return
+			}
+		} else {
+			fmt.Println("Packet loss oh no :o")
 		}
 		fmt.Println("Sent to Master:", packet)
-
-		// Debug printing
-		testbitstring := ""
-		for _, testb := range packet {
-			testbitstring += fmt.Sprintf("%08b", testb)
-		}
-		fmt.Println(testbitstring)
 
 		// Read response from Master
 		buffer := make([]byte, 1024)
 		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 		n, err := conn.Read(buffer)
+
 		if err != nil {
 			fmt.Println("Failed to read response:", err)
-			MasterCheck(rand.Intn(3000)+1500, _ELS, EL)
-			ActiveConnection = false
-			return
+
+			// Increment failure count and check timeout window
+			if time.Since(lastFailureTime) > failureTimeout {
+				failureCount = 0 // Reset failure count if timeout window passed
+			}
+			failureCount++
+			lastFailureTime = time.Now()
+
+			if failureCount >= maxFailures {
+				fmt.Println("Connection issue persists, triggering MasterCheck.")
+				MasterCheck(rand.Intn(3000)+1500, _ELS, EL)
+				ActiveConnection = false
+				return
+			}
+		} else {
+			// Reset failure count on successful read
+			failureCount = 0
+			receiver <- string(buffer[:n])
+			ActiveConnection = true
 		}
 		receiver <- string(buffer[:n])
 		ActiveConnection = true
