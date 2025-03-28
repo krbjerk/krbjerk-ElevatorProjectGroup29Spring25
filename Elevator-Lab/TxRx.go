@@ -51,7 +51,7 @@ func MasterCheck(masterTimer int, _ELS *elevator.ElevatorList, _EL *elevator.Ele
 
 	for {
 		// Try to connect to a potential master using KCP
-		conn, err := kcp.DialWithOptions("10.22.123.211:4001", nil, 10, 3) // Broadcast
+		conn, err := kcp.DialWithOptions("10.22.169.77:4001", nil, 10, 3) // Broadcast
 		if err == nil {
 			conn.SetDeadline(time.Now().Add(100 * time.Millisecond))
 			_, err = conn.Write([]byte("ping"))
@@ -330,7 +330,7 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 // -------
 
 func SendToMaster(EL *elevator.Elevator, receiver chan<- string, _ELS *elevator.ElevatorList) {
-	conn, err := kcp.DialWithOptions("10.22.123.211:4000", nil, 10, 3)
+	conn, err := kcp.DialWithOptions("10.22.169.77:4000", nil, 10, 3)
 	if err != nil {
 		log.Fatalf("Failed to connect to master: %v", err)
 	}

@@ -138,13 +138,15 @@ func (_e *Elevator) HandleFloorArrival(_newFloor int, otherRequest [4][3]bool) {
 		//fmt.Println("Stopping elevator at floor:", _newFloor)
 		elevio.SetMotorDirection(elevio.MD_Stop)
 		elevio.SetDoorOpenLamp(true)
+
+		// Fix: Clear requests *before* stopping direction is set
 		_e.clearRequestsAtCurrentFloor()
+
 		timer.Start(DOOR_OPEN_DURATION)
 		_e.UpdateLights(otherRequest)
+
 		_e.m_behavior = EB_DoorOpen
-		_e.m_dirn = elevio.MD_Stop
 	}
-	//_e.printElevatorState()
 }
 
 // Handle door timeout event
