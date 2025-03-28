@@ -9,6 +9,7 @@ import (
 	"net"
 	"root/elevio"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -573,7 +574,7 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 // -------
 
 func (EL *Elevator) SendToMaster(receiver chan<- string, _ELS *ElevatorList) {
-	conn, err := kcp.DialWithOptions("255.255.255.255:4000", nil, 10, 3)
+	conn, err := kcp.DialWithOptions("10.100.23.33:4000", nil, 10, 3)
 	if err != nil {
 		log.Fatalf("Failed to connect to master: %v", err)
 	}
@@ -610,7 +611,7 @@ func (EL *Elevator) SendToMaster(receiver chan<- string, _ELS *ElevatorList) {
 			fmt.Println("Failed to read response:", err)
 			MasterCheck(rand.Intn(1500)+1500, _ELS, EL) // TODO: change to pass py reference
 			ActiveConnection = false                    // look at removing use of activeconnection
-			continue
+			return
 		}
 		receiver <- string(buffer[:n])
 		ActiveConnection = true
@@ -654,36 +655,60 @@ func StringToByteList(s string) []byte {
 }
 
 // New kristoffer functions:
+var masterIP string
 
 func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
 	timeoutDuration := time.Duration(masterTimer) * time.Millisecond
 	deadline := time.Now().Add(timeoutDuration)
 
 	fmt.Println("Searching for a master...")
+	targetAddress := "255.255.255.255:4001" // Target address for discovery
 
 	for {
-		// Try to connect to a potential master using KCP
-		conn, err := kcp.DialWithOptions("255.255.255.255:4001", nil, 10, 3) // Broadcast
-		if err == nil {
-			conn.SetDeadline(time.Now().Add(100 * time.Millisecond))
-			_, err = conn.Write([]byte("ping"))
-			fmt.Println("ping")
-			if err == nil {
-				// Wait for "ack" response
-				buffer := make([]byte, 1024)
-				n, err := conn.Read(buffer)
-				if err == nil && string(buffer[:n]) == "ack" {
-					fmt.Println("Master found! Running SendToMaster.")
-					Master = false
-					go _EL.SendToMaster(Send, _ELS)
-					conn.Close()
-					return
-				}
-			}
-			conn.Close()
+		// Create UDP connection
+		conn, err := net.ListenPacket("udp", ":0")
+		if err != nil {
+			log.Printf("UDP error: %v", err)
+			time.Sleep(100 * time.Millisecond)
+			continue
 		}
 
-		// Check if timeout has expired
+		// Resolve target address
+		addr, err := net.ResolveUDPAddr("udp", targetAddress)
+		if err != nil {
+			conn.Close()
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		// Send ping
+		_, err = conn.WriteTo([]byte("ping"), addr)
+		if err != nil {
+			conn.Close()
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		// Set read timeout
+		conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+
+		// Wait for response
+		buffer := make([]byte, 1024)
+		n, _, err := conn.ReadFrom(buffer)
+		conn.Close()
+
+		if err == nil {
+			response := string(buffer[:n])
+			if strings.HasPrefix(response, "ack:") {
+				masterIP = strings.Split(response, ":")[1]
+				fmt.Printf("Master found at %s! Running SendToMaster.\n", masterIP)
+				Master = false
+				go _EL.SendToMaster(Send, _ELS)
+				return
+			}
+		}
+
+		// Timeout check
 		if time.Now().After(deadline) {
 			fmt.Println("No master found. Becoming master.")
 			Master = true
@@ -692,51 +717,49 @@ func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
 			return
 		}
 
-		// Retry after 1 second
 		time.Sleep(100 * time.Millisecond)
 	}
 }
 
-// ackResponder listens on port 4001 and responds to handshake messages.
-// It only sends "ack" if it receives a "ping".
 func ackResponder() {
-	listener, err := kcp.ListenWithOptions(":4001", nil, 10, 3) // Listen on all interfaces
-	if err != nil {
-		log.Fatalf("Failed to start KCP listener: %v", err)
+	// Get server's IP address
+	var serverIP string
+	addrs, err := net.InterfaceAddrs()
+	if err == nil {
+		for _, a := range addrs {
+			if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+				if ipnet.IP.To4() != nil {
+					serverIP = ipnet.IP.String()
+					break
+				}
+			}
+		}
 	}
-	defer listener.Close()
-	fmt.Println("Master is running and responding to KCP discovery requests.")
+
+	pc, err := net.ListenPacket("udp", ":4001")
+	if err != nil {
+		log.Fatalf("Failed to start UDP listener: %v", err)
+	}
+	defer pc.Close()
+	fmt.Printf("Master is running at %s and listening on UDP :4001\n", serverIP)
 
 	for {
-		conn, err := listener.AcceptKCP()
+		buffer := make([]byte, 1024)
+		n, addr, err := pc.ReadFrom(buffer)
 		if err != nil {
-			log.Printf("Error accepting KCP connection: %v", err)
+			log.Printf("Read error: %v", err)
 			continue
 		}
 
-		// Handle each connection in a new goroutine
-		go func(c *kcp.UDPSession) {
-			defer c.Close()
-
-			// Read data
-			buffer := make([]byte, 1024)
-			n, err := c.Read(buffer)
+		if string(buffer[:n]) == "ping" {
+			response := fmt.Sprintf("ack:%s", serverIP)
+			_, err = pc.WriteTo([]byte(response), addr)
 			if err != nil {
-				log.Printf("Error reading data: %v", err)
-				return
+				log.Printf("Write error: %v", err)
+			} else {
+				fmt.Printf("Sent ack with IP %s to %s\n", serverIP, addr)
 			}
-
-			// If message is "ping", respond with "ack"
-			if string(buffer[:n]) == "ping" {
-				_, err = c.Write([]byte("ack"))
-				fmt.Println("Ack")
-				if err != nil {
-					log.Printf("Error sending ack: %v", err)
-				} else {
-					fmt.Println("Sent ack to a client")
-				}
-			}
-		}(conn)
+		}
 	}
 }
 
