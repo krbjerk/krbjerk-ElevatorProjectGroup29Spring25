@@ -20,7 +20,8 @@ const _pollRate = 20 * time.Millisecond
 
 var slaveOrderChans = make(map[int32]chan [][4][3]bool)
 
-var ipList = []string{"10.100.23.33"}
+var ipList = []string{"10.100.23.33", "10.22.113.211"}
+var MasterIndex int
 
 var Read = make(chan string, 10)
 var Send = make(chan string, 10)
@@ -575,7 +576,7 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 // -------
 
 func (EL *Elevator) SendToMaster(receiver chan<- string, _ELS *ElevatorList) {
-	conn, err := kcp.DialWithOptions("10.100.23.33:4000", nil, 10, 3)
+	conn, err := kcp.DialWithOptions(ipList[MasterIndex]+":4000", nil, 10, 3)
 	if err != nil {
 		log.Fatalf("Failed to connect to master: %v", err)
 	}
@@ -677,6 +678,7 @@ func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
 					n, err := conn.Read(buffer)
 					if err == nil && string(buffer[:n]) == "ack" {
 						fmt.Println("Master found! Running SendToMaster.")
+						MasterIndex = i
 						Master = false
 						go _EL.SendToMaster(Send, _ELS)
 						return
