@@ -9,7 +9,6 @@ import (
 	"net"
 	"root/elevio"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -661,46 +660,53 @@ func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
 	timeoutDuration := time.Duration(masterTimer) * time.Millisecond
 	deadline := time.Now().Add(timeoutDuration)
 
-	fmt.Println("Searching for a master...")
-	targetAddress := "255.255.255.255:4001" // Target address for discovery
+	fmt.Println("Searching for a master via broadcast...")
+	broadcastAddress := "255.255.255.255:4001"
+
+	// Create broadcast connection
+	conn, err := net.Dial("udp", broadcastAddress)
+	if err != nil {
+		log.Fatalf("Failed to create UDP socket: %v", err)
+	}
+	defer conn.Close()
+
+	// Enable broadcast (works on most systems without this, but good practice)
+	if udpConn, ok := conn.(*net.UDPConn); ok {
+		udpConn.SetWriteBuffer(1024)
+	}
+
+	// Create listener on random port
+	localAddr, err := net.ResolveUDPAddr("udp", ":0")
+	if err != nil {
+		log.Fatalf("Failed to resolve local address: %v", err)
+	}
+
+	listener, err := net.ListenUDP("udp", localAddr)
+	if err != nil {
+		log.Fatalf("Failed to listen for responses: %v", err)
+	}
+	defer listener.Close()
 
 	for {
-		// Create UDP connection
-		conn, err := net.ListenPacket("udp", ":0")
+		// Send broadcast ping
+		_, err = conn.Write([]byte("ping"))
 		if err != nil {
-			log.Printf("UDP error: %v", err)
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-
-		// Resolve target address
-		addr, err := net.ResolveUDPAddr("udp", targetAddress)
-		if err != nil {
-			conn.Close()
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-
-		// Send ping
-		_, err = conn.WriteTo([]byte("ping"), addr)
-		if err != nil {
-			conn.Close()
+			log.Printf("Broadcast send error: %v", err)
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 
 		// Set read timeout
-		conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		listener.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 
 		// Wait for response
 		buffer := make([]byte, 1024)
-		n, _, err := conn.ReadFrom(buffer)
-		conn.Close()
-
+		n, remoteAddr, err := listener.ReadFromUDP(buffer)
 		if err == nil {
 			response := string(buffer[:n])
-			if strings.HasPrefix(response, "ack:") {
-				masterIP = strings.Split(response, ":")[1]
+			if response == "ack" {
+				// Use the actual sender's IP from the UDP packet
+				masterIP := remoteAddr.IP.String()
 				fmt.Printf("Master found at %s! Running SendToMaster.\n", masterIP)
 				Master = false
 				go _EL.SendToMaster(Send, _ELS)
@@ -722,26 +728,12 @@ func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
 }
 
 func ackResponder() {
-	// Get server's IP address
-	var serverIP string
-	addrs, err := net.InterfaceAddrs()
-	if err == nil {
-		for _, a := range addrs {
-			if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-				if ipnet.IP.To4() != nil {
-					serverIP = ipnet.IP.String()
-					break
-				}
-			}
-		}
-	}
-
 	pc, err := net.ListenPacket("udp", ":4001")
 	if err != nil {
 		log.Fatalf("Failed to start UDP listener: %v", err)
 	}
 	defer pc.Close()
-	fmt.Printf("Master is running at %s and listening on UDP :4001\n", serverIP)
+	fmt.Println("Master is running and listening on UDP :4001")
 
 	for {
 		buffer := make([]byte, 1024)
@@ -752,12 +744,12 @@ func ackResponder() {
 		}
 
 		if string(buffer[:n]) == "ping" {
-			response := fmt.Sprintf("ack:%s", serverIP)
-			_, err = pc.WriteTo([]byte(response), addr)
+			// Just respond with "ack" - the client will get our IP from the packet
+			_, err = pc.WriteTo([]byte("ack"), addr)
 			if err != nil {
 				log.Printf("Write error: %v", err)
 			} else {
-				fmt.Printf("Sent ack with IP %s to %s\n", serverIP, addr)
+				fmt.Printf("Sent ack to %s\n", addr.String())
 			}
 		}
 	}
