@@ -105,7 +105,6 @@ func main() {
 				order := MakeRequest(ELS) // WHAT WILL BE SENT TO SLAVE
 				fmt.Println("Order made:")
 				fmt.Println(order)
-				//fmt.Println(order)
 
 				for i := 0; i < NUM_FLOORS; i++ {
 					for j := 0; j < 3; j++ {
