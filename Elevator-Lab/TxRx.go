@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"root/elevator"
 	"root/elevio"
 	"strconv"
 	"sync"
@@ -42,7 +43,7 @@ var (
 	IDCounter     int32 = 0
 )
 
-func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
+func MasterCheck(masterTimer int, _ELS *elevator.ElevatorList, _EL *elevator.Elevator) {
 	timeoutDuration := time.Duration(masterTimer) * time.Millisecond
 	deadline := time.Now().Add(timeoutDuration)
 
@@ -50,7 +51,7 @@ func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
 
 	for {
 		// Try to connect to a potential master using KCP
-		conn, err := kcp.DialWithOptions("192.168.0.190:4001", nil, 10, 3) // Broadcast
+		conn, err := kcp.DialWithOptions("10.22.123.211:4001", nil, 10, 3) // Broadcast
 		if err == nil {
 			conn.SetDeadline(time.Now().Add(100 * time.Millisecond))
 			_, err = conn.Write([]byte("ping"))
@@ -61,7 +62,7 @@ func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
 				if err == nil && string(buffer[:n]) == "ack" {
 					fmt.Println("Master found! Running SendToMaster.")
 					Master = false
-					go _EL.SendToMaster(Send, _ELS)
+					go SendToMaster(_EL, Send, _ELS)
 					conn.Close()
 					return
 				}
@@ -74,7 +75,7 @@ func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
 			fmt.Println("No master found. Becoming master.")
 			Master = true
 			go ackResponder()
-			go _ELS.ReadFromSlave(Read)
+			go ReadFromSlave(_ELS, Read)
 			return
 		}
 
@@ -221,14 +222,14 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string) {
 
 // -------
 
-func (_ELS ElevatorList) ReadFromSlave(receiver chan<- string) {
+func ReadFromSlave(_ELS *elevator.ElevatorList, receiver chan<- string) {
 	listener, err := kcp.ListenWithOptions(":4000", nil, 10, 3)
 
 	if err != nil {
 		log.Fatalf("Failed to start KCP server: %v", err)
 	}
 	defer listener.Close()
-	fmt.Println("KCP Master (Server) listening on port 4001...")
+	fmt.Println("KCP Master (Server) listening on port 4000...")
 
 	for {
 		conn, err := listener.AcceptKCP()
@@ -250,7 +251,11 @@ func (_ELS ElevatorList) ReadFromSlave(receiver chan<- string) {
 			id = atomic.AddInt32(&IDCounter, 1)
 			slaveMap[host] = id
 		} else {
-			var update uint8 = uint8(BoolToInt(_ELS[id].m_requests[3][2])&0b1 | BoolToInt(_ELS[id].m_requests[2][2])&0b1<<1 | BoolToInt(_ELS[id].m_requests[1][2])&0b1<<2 | BoolToInt(_ELS[id].m_requests[0][2])&0b1<<3)
+			var update uint8 = uint8(
+				BoolToInt(elevator.GetIndRequest((*_ELS)[id], 3, 2))&0b1 |
+					BoolToInt(elevator.GetIndRequest((*_ELS)[id], 2, 2))&0b1<<1 |
+					BoolToInt(elevator.GetIndRequest((*_ELS)[id], 1, 2))&0b1<<2 |
+					BoolToInt(elevator.GetIndRequest((*_ELS)[id], 0, 2))&0b1<<3)
 			_, err = conn.Write([]byte{update})
 			if err != nil {
 				fmt.Println(err)
@@ -307,8 +312,8 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 			if len(masterOrder) > int(id) && len(masterOrder[id]) > 0 {
 				otherRequests := masterOrder[:id]
 				otherRequests = append(otherRequests, masterOrder[id+1:]...)
-				otherRequest := MergeRequestsSlice(otherRequests)
-				response2 = []byte(EncodeMatrixToString(masterOrder[id]) + EncodeMatrixToString(otherRequest))
+				otherRequest := elevator.MergeRequestsSlice(otherRequests)
+				response2 = []byte(elevator.EncodeMatrixToString(masterOrder[id]) + elevator.EncodeMatrixToString(otherRequest))
 			}
 		case <-time.After(100 * time.Millisecond):
 			log.Printf("No master order available for slave %d, sending default response.\n", id)
@@ -324,8 +329,8 @@ func HandleConnections(conn *kcp.UDPSession, receive chan<- string, id int32, or
 
 // -------
 
-func (EL *Elevator) SendToMaster(receiver chan<- string, _ELS *ElevatorList) {
-	conn, err := kcp.DialWithOptions("192.168.0.176:4000", nil, 10, 3)
+func SendToMaster(EL *elevator.Elevator, receiver chan<- string, _ELS *elevator.ElevatorList) {
+	conn, err := kcp.DialWithOptions("10.22.123.211:4000", nil, 10, 3)
 	if err != nil {
 		log.Fatalf("Failed to connect to master: %v", err)
 	}
@@ -334,7 +339,7 @@ func (EL *Elevator) SendToMaster(receiver chan<- string, _ELS *ElevatorList) {
 	fmt.Println("Connected to Master!")
 
 	for {
-		EL.printElevatorState()
+		EL.PrintElevatorState()
 		packet := EncodeElevator(EL)
 		_, err := conn.Write(packet[:])
 		if err != nil {
@@ -359,7 +364,7 @@ func (EL *Elevator) SendToMaster(receiver chan<- string, _ELS *ElevatorList) {
 			fmt.Println("Failed to read response:", err)
 			MasterCheck(rand.Intn(1500)+300, _ELS, EL)
 			ActiveConnection = false
-			continue
+			return
 		}
 		receiver <- string(buffer[:n])
 		ActiveConnection = true
@@ -390,9 +395,10 @@ func BoolToInt(b bool) int {
 	return 0
 }
 
-func EncodeElevator(e *Elevator) [3]byte {
+/*
+func EncodeElevator(e *elevator.Elevator) [3]byte {
 	var b0, b1, b2 byte
-	req := e.m_requests
+	req := elevator.GetRequests(e)
 
 	// Byte 0: floor 0–1 buttons
 	if req[0][0] {
@@ -442,8 +448,8 @@ func EncodeElevator(e *Elevator) [3]byte {
 	return [3]byte{b0, b1, b2}
 }
 
-func DecodeElevator(data [3]byte) Elevator {
-	var e Elevator
+func DecodeElevator(data [3]byte) elevator.Elevator {
+	var e elevator.Elevator
 	b0, b1, b2 := data[0], data[1], data[2]
 
 	// --- Byte 0: floors 0..1 ---
@@ -467,17 +473,97 @@ func DecodeElevator(data [3]byte) Elevator {
 	e.m_requests[3][2] = (b1 & (1 << 5)) != 0 // cab[3]
 
 	// --- Byte 2: elevator state ---
-	e.m_behavior = ElevatorBehavior(b2 & 0b11)               // bits 0..1
+	e.m_behavior = elevator.ElevatorBehavior(b2 & 0b11)      // bits 0..1
 	e.m_dirn = elevio.MotorDirection(((b2 >> 2) & 0b11) - 1) // bits 2..3 - 1
 	e.m_floor = int((b2 >> 4) & 0b11)                        // bits 4..5
 
 	return e
+}*/
+
+func EncodeElevator(e *elevator.Elevator) [3]byte {
+	var b0, b1, b2 byte
+	req := elevator.GetRequests(*e)
+
+	// Byte 0: floor 0–1 buttons
+	if req[0][0] {
+		b0 |= 1 << 0
+	}
+	if req[0][1] {
+		b0 |= 1 << 1
+	}
+	if req[0][2] {
+		b0 |= 1 << 2
+	}
+	if req[1][0] {
+		b0 |= 1 << 3
+	}
+	if req[1][1] {
+		b0 |= 1 << 4
+	}
+	if req[1][2] {
+		b0 |= 1 << 5
+	}
+
+	// Byte 1: floor 2–3 buttons
+	if req[2][0] {
+		b1 |= 1 << 0
+	}
+	if req[2][1] {
+		b1 |= 1 << 1
+	}
+	if req[2][2] {
+		b1 |= 1 << 2
+	}
+	if req[3][0] {
+		b1 |= 1 << 3
+	}
+	if req[3][1] {
+		b1 |= 1 << 4
+	}
+	if req[3][2] {
+		b1 |= 1 << 5
+	}
+
+	// Byte 2: state info
+	b2 |= byte(elevator.GetBehavior(*e) & 0b11)
+	b2 |= byte((elevator.GetDirection(*e)+1)&0b11) << 2
+	b2 |= byte(elevator.GetFloor(*e)&0b11) << 4
+
+	return [3]byte{b0, b1, b2}
 }
 
-func DecodeElevatorFromString(s string) Elevator {
+func DecodeElevator(data [3]byte) elevator.Elevator {
+	var e elevator.Elevator
+	b0, b1, b2 := data[0], data[1], data[2]
+
+	// --- Byte 0: floors 0..1 ---
+	e.SetIndRequest((b0&(1<<0)) != 0, 0, 0)
+	e.SetIndRequest((b0&(1<<1)) != 0, 0, 1)
+	e.SetIndRequest((b0&(1<<2)) != 0, 0, 2)
+	e.SetIndRequest((b0&(1<<3)) != 0, 1, 0)
+	e.SetIndRequest((b0&(1<<4)) != 0, 1, 1)
+	e.SetIndRequest((b0&(1<<5)) != 0, 1, 2)
+
+	// --- Byte 1: floors 2..3 ---
+	e.SetIndRequest((b1&(1<<0)) != 0, 2, 0)
+	e.SetIndRequest((b1&(1<<1)) != 0, 2, 1)
+	e.SetIndRequest((b1&(1<<2)) != 0, 2, 2)
+	e.SetIndRequest((b1&(1<<3)) != 0, 3, 0)
+	e.SetIndRequest((b1&(1<<4)) != 0, 3, 1)
+	e.SetIndRequest((b1&(1<<5)) != 0, 3, 2)
+
+	// --- Byte 2: elevator state ---
+	e.SetBehavior(elevator.ElevatorBehavior(b2 & 0b11))
+	e.SetDirection(elevio.MotorDirection(((b2 >> 2) & 0b11) - 1))
+	e.SetFloor(int((b2 >> 4) & 0b11))
+
+	return e
+}
+
+func DecodeElevatorFromString(s string) elevator.Elevator {
 	if len(s) != 24 {
 		fmt.Println("DecodeElevatorFromString: invalid length:", len(s))
-		return Elevator{}
+		return elevator.Elevator{}
 	}
 	b0, _ := strconv.ParseUint(s[0:8], 2, 8)
 	b1, _ := strconv.ParseUint(s[8:16], 2, 8)
