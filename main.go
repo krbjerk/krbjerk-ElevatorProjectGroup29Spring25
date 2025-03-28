@@ -9,6 +9,9 @@ import (
 )
 
 func main() {
+
+	
+
 	var SimServerPort = "localhost:12345"
 	if len(os.Args) > 1 {
 		SimServerPort = string("localhost:" + os.Args[1]) // First argument after "go run ."

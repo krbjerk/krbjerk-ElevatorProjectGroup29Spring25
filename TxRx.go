@@ -20,6 +20,8 @@ const _pollRate = 20 * time.Millisecond
 
 var slaveOrderChans = make(map[int32]chan [][4][3]bool)
 
+var ipList = []string{"10.100.23.33"}
+
 var Read = make(chan string, 10)
 var Send = make(chan string, 10)
 
@@ -654,67 +656,36 @@ func StringToByteList(s string) []byte {
 }
 
 // New kristoffer functions:
-var masterIP string
 
 func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
 	timeoutDuration := time.Duration(masterTimer) * time.Millisecond
 	deadline := time.Now().Add(timeoutDuration)
 
-	fmt.Println("Searching for a master via broadcast...")
-	broadcastAddress := "255.255.255.255:4001"
-
-	// Create broadcast connection
-	conn, err := net.Dial("udp", broadcastAddress)
-	if err != nil {
-		log.Fatalf("Failed to create UDP socket: %v", err)
-	}
-	defer conn.Close()
-
-	// Enable broadcast (works on most systems without this, but good practice)
-	if udpConn, ok := conn.(*net.UDPConn); ok {
-		udpConn.SetWriteBuffer(1024)
-	}
-
-	// Create listener on random port
-	localAddr, err := net.ResolveUDPAddr("udp", ":0")
-	if err != nil {
-		log.Fatalf("Failed to resolve local address: %v", err)
-	}
-
-	listener, err := net.ListenUDP("udp", localAddr)
-	if err != nil {
-		log.Fatalf("Failed to listen for responses: %v", err)
-	}
-	defer listener.Close()
+	fmt.Println("Searching for a master...")
 
 	for {
-		// Send broadcast ping
-		_, err = conn.Write([]byte("ping"))
-		if err != nil {
-			log.Printf("Broadcast send error: %v", err)
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-
-		// Set read timeout
-		listener.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-
-		// Wait for response
-		buffer := make([]byte, 1024)
-		n, remoteAddr, err := listener.ReadFromUDP(buffer)
-		if err == nil {
-			response := string(buffer[:n])
-			if response == "ack" {
-				// Use the actual sender's IP from the UDP packet
-				masterIP := remoteAddr.IP.String()
-				fmt.Printf("Master found at %s! Running SendToMaster.\n", masterIP)
-				Master = false
-				go _EL.SendToMaster(Send, _ELS)
-				return
+		for i := range ipList {
+			// Try to connect to a potential master using KCP
+			conn, err := kcp.DialWithOptions(ipList[i]+":4001", nil, 10, 3) // Broadcast
+			if err == nil {
+				conn.SetDeadline(time.Now().Add(100 * time.Millisecond))
+				_, err = conn.Write([]byte("ping"))
+				fmt.Println("ping")
+				if err == nil {
+					// Wait for "ack" response
+					buffer := make([]byte, 1024)
+					n, err := conn.Read(buffer)
+					if err == nil && string(buffer[:n]) == "ack" {
+						fmt.Println("Master found! Running SendToMaster.")
+						Master = false
+						go _EL.SendToMaster(Send, _ELS)
+						return
+					}
+				}
+				conn.Close()
 			}
 		}
-
-		// Timeout check
+		// Check if timeout has expired
 		if time.Now().After(deadline) {
 			fmt.Println("No master found. Becoming master.")
 			Master = true
@@ -723,35 +694,51 @@ func MasterCheck(masterTimer int, _ELS *ElevatorList, _EL *Elevator) {
 			return
 		}
 
+		// Retry after 1 second
 		time.Sleep(100 * time.Millisecond)
 	}
 }
 
+// ackResponder listens on port 4001 and responds to handshake messages.
+// It only sends "ack" if it receives a "ping".
 func ackResponder() {
-	pc, err := net.ListenPacket("udp", ":4001")
+	listener, err := kcp.ListenWithOptions(":4001", nil, 10, 3) // Listen on all interfaces
 	if err != nil {
-		log.Fatalf("Failed to start UDP listener: %v", err)
+		log.Fatalf("Failed to start KCP listener: %v", err)
 	}
-	defer pc.Close()
-	fmt.Println("Master is running and listening on UDP :4001")
+	defer listener.Close()
+	fmt.Println("Master is running and responding to KCP discovery requests.")
 
 	for {
-		buffer := make([]byte, 1024)
-		n, addr, err := pc.ReadFrom(buffer)
+		conn, err := listener.AcceptKCP()
 		if err != nil {
-			log.Printf("Read error: %v", err)
+			log.Printf("Error accepting KCP connection: %v", err)
 			continue
 		}
 
-		if string(buffer[:n]) == "ping" {
-			// Just respond with "ack" - the client will get our IP from the packet
-			_, err = pc.WriteTo([]byte("ack"), addr)
+		// Handle each connection in a new goroutine
+		go func(c *kcp.UDPSession) {
+			defer c.Close()
+
+			// Read data
+			buffer := make([]byte, 1024)
+			n, err := c.Read(buffer)
 			if err != nil {
-				log.Printf("Write error: %v", err)
-			} else {
-				fmt.Printf("Sent ack to %s\n", addr.String())
+				log.Printf("Error reading data: %v", err)
+				return
 			}
-		}
+
+			// If message is "ping", respond with "ack"
+			if string(buffer[:n]) == "ping" {
+				_, err = c.Write([]byte("ack"))
+				fmt.Println("Ack")
+				if err != nil {
+					log.Printf("Error sending ack: %v", err)
+				} else {
+					fmt.Println("Sent ack to a client")
+				}
+			}
+		}(conn)
 	}
 }
 
